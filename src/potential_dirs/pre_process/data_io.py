@@ -23,6 +23,14 @@ def read_perline_json(json_file_path):
         except ValueError:
             yield {}
 
+def print_dict(dictionary, delimeter):
+    """
+    Print the dictionary with one key value pair per line
+    :param dictionary: dict to be printed
+    :param delimeter: delimeter to be printed b/w key and value
+    """
+    for key in dictionary:
+        print(key,delimeter, dictionary[key])
 
 # Misc playground to test upper functions
 # x = read_perline_json(TRAINING_FILE_PATH)
