@@ -1,6 +1,7 @@
 import json
 from config import *
 from potential_models import *
+import torch.optim as optim
 
 
 # ---------- I/O UTILS
@@ -102,6 +103,28 @@ def accumulate_mapping(line_gen, pred_map, arg_map, role_map):
 
 
 
+# ---------- TRAINING MECHANISM
+def train(num_epochs, training_data, model, loss_fn, optimizer):
+    for epoch in range(num_epochs):
+        for pred, arg, role in training_data:
+            # print(pred, arg, role)
+            # exit()
+            # REMEMBER to clear out gradients for each instance
+            model.zero_grad()
+
+            # Obtain the probabilities
+            probs = model((pred, arg))
+
+            # Computing Loss (LEARNING)
+            target = torch.LongTensor([role])
+            loss = loss_fn(probs, target)
+            loss.backward()
+            optimizer.step()
+
+    return model
+
+
+# ---------- MAKE PREDICTIONS
 
 
 # Driver main
@@ -128,4 +151,89 @@ if __name__ == "__main__":
 
     # Learning
     model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx))
-    print(model)
+
+    count = 0
+    params1 = {}
+    for param in model.parameters():
+        # print(param.requires_grad)
+        params1[count] = param
+        count += 1
+    # exit()
+
+
+    loss_function = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+    trained_model = train(30, train_set, model, loss_function, optimizer)
+
+    # # REMOVE LATER
+    #
+    #
+    # for epoch in range(5):
+    #     for pred, arg, role in train_set:
+    #         # print(pred, arg, role)
+    #         # exit()
+    #         # REMEMBER to clear out gradients for each instance
+    #         optimizer.zero_grad()
+    #
+    #         # Obtain the probabilities
+    #         probs = model((pred, arg))
+    #
+    #         # for param in model.parameters():
+    #         #     print(param)
+    #         #     break
+    #
+    #         # Computing Loss (LEARNING)
+    #         target = torch.LongTensor([role])
+    #         loss = loss_function(probs, target)
+    #         # print(loss)
+    #         loss.backward()
+    #         optimizer.step()
+
+
+    # REMOVE LATER
+
+    # count = 0
+    # params2 = {}
+    # for param in model.parameters():
+    #     # print(param)
+    #     params2[count] = param
+    #     count += 1
+
+    # # d1 = {"a":1, "b":2}
+    # # d2 = {"a":1, "b":3}
+    #
+    # # print(len(params1), len(params2))
+    # #
+    # print(params1[0])
+    # print(params2[0])
+
+def define_prediction(l, label_to_ix):
+    max = -10000000
+    index = 0
+    m_id = 0
+    for t in l:
+        for val in t:
+            if val > max:
+                max = val
+                m_id = index
+            index += 1
+
+    return m_id
+
+
+a = []
+
+# TESTING
+with torch.no_grad():
+    for pred, arg, role in test_set:
+        probs = model((pred, arg))
+        a += [(define_prediction(probs, role), role)]
+        # print("PREDICTED: ", define_prediction(probs, role), "GOLD:", role)
+
+count = 0
+for elem in a:
+    if elem[0] == elem[1]:
+        count += 1
+
+print(count/len(a))
