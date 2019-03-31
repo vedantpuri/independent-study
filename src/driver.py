@@ -1,11 +1,15 @@
+# ---------- IMPORTS
+
+import os
+import sys
 import json
+import torch.optim as optim
 from config import *
 from potential_models import *
-import torch.optim as optim
+from sklearn.metrics import *
 
 
 # ---------- I/O UTILS
-
 
 # Generator for lines in json file
 def read_perline_json(json_file_path):
@@ -43,7 +47,6 @@ def print_collection(bag, dictionary=False, delimeter=":"):
             print(element)
 
 
-
 # ---------- PRE-PROCESSING UTILS
 
 def accumulate_mapping(line_gen, pred_map, arg_map, role_map):
@@ -77,22 +80,6 @@ def accumulate_mapping(line_gen, pred_map, arg_map, role_map):
             if role_at_index not in role_map:
                 role_map[role_at_index] = len(role_map)
 
-            # ------- CANNOT USE DICT DUE TO COLLISIOINS (same (p, a) => l1, l2)
-
-            # tup = (sample[PREDICATE_KEY][0], sample[ARGUMENT_KEY][index])
-            # if tup in training_examples and
-            #               training_examples[tup] != sample[ROLE_KEY][index]:
-            #     # print("true")
-            #     # print(tup,":", training_examples[tup])
-            #     print(predicate, argument_at_index, training_examples[tup],
-            #           sample[ROLE_KEY][index])
-            #     # exit()
-            #
-            # if tup not in training_examples:
-            #     training_examples[tup] = sample[ROLE_KEY][index]
-
-            # ------- CANNOT USE DICT DUE TO COLLISIOINS (same (p, a) => l1, l2)
-
             # Add example in the format -> (p, a, r)
             formatted_examples += [(pred_map[predicate],
                                        arg_map[argument_at_index],
@@ -101,14 +88,28 @@ def accumulate_mapping(line_gen, pred_map, arg_map, role_map):
     return pred_map, arg_map, role_map, formatted_examples
 
 
+def form_reverse_mapping(pred_map, arg_map, role_map):
+    pred_rev_map, arg_rev_map, role_rev_map = {}, {}, {}
+
+    for k in pred_map:
+        pred_rev_map[pred_map[k]] = k
+
+    for k in arg_map:
+        arg_rev_map[arg_map[k]] = k
+
+    for k in role_map:
+        role_rev_map[role_map[k]] = k
+
+
+    return pred_rev_map, arg_rev_map, role_rev_map
 
 
 # ---------- TRAINING MECHANISM
+
 def train(num_epochs, training_data, model, loss_fn, optimizer):
     for epoch in range(num_epochs):
         for pred, arg, role in training_data:
-            # print(pred, arg, role)
-            # exit()
+
             # REMEMBER to clear out gradients for each instance
             model.zero_grad()
 
@@ -124,8 +125,54 @@ def train(num_epochs, training_data, model, loss_fn, optimizer):
     return model
 
 
-# ---------- MAKE PREDICTIONS
+# ---------- PREDICTIONS + EVAL
 
+def test_performance(data, model):
+    preds_labels = []
+    with torch.no_grad():
+        for pred, arg, role in data:
+            probs = model((pred, arg))
+            preds_labels += [(demistify_predictions(probs[0]), role)]
+
+    return preds_labels
+
+def demistify_predictions(probs_tensor):
+    max = -sys.maxsize - 1
+    index = 0
+    m_id = 0
+    for val in probs_tensor:
+        if val > max:
+            max = val
+            m_id = index
+        index += 1
+
+    return m_id
+
+def write_predictions(predictions, idx2role):
+    f = open(TEMP_PREDICTION_FILE,"w+")
+    for prediction, gold_label in predictions:
+        f.write(idx2role[prediction] + "\t" + idx2role[gold_label] + "\n")
+    f.close()
+
+def read_prediction_file():
+    with open(TEMP_PREDICTION_FILE,"r") as f:
+        content = f.readlines()
+    content = [x.strip() for x in content]
+    y_pred = []
+    y_gold = []
+    for element in content:
+        line = element.split("\t")
+        y_pred += [line[0]]
+        y_gold += [line[1]]
+    assert(len(y_pred) == len(y_gold))
+
+    return y_pred, y_gold
+
+def evaluate_performance(metric_fn, **kwargs):
+    print(metric_fn(**kwargs))
+
+
+# ---------- MAIN EXECUTION
 
 # Driver main
 if __name__ == "__main__":
@@ -149,91 +196,28 @@ if __name__ == "__main__":
                                                 pred2idx, arg2idx, role2idx)
     # print(len(pred2idx), len(arg2idx), len(role2idx))
 
+
+
+    idx2pred, idx2arg, idx2role = form_reverse_mapping(pred2idx, arg2idx, role2idx)
+
     # Learning
     model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx))
-
-    count = 0
-    params1 = {}
-    for param in model.parameters():
-        # print(param.requires_grad)
-        params1[count] = param
-        count += 1
-    # exit()
 
 
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.1)
 
-    trained_model = train(30, train_set, model, loss_function, optimizer)
-
-    # # REMOVE LATER
-    #
-    #
-    # for epoch in range(5):
-    #     for pred, arg, role in train_set:
-    #         # print(pred, arg, role)
-    #         # exit()
-    #         # REMEMBER to clear out gradients for each instance
-    #         optimizer.zero_grad()
-    #
-    #         # Obtain the probabilities
-    #         probs = model((pred, arg))
-    #
-    #         # for param in model.parameters():
-    #         #     print(param)
-    #         #     break
-    #
-    #         # Computing Loss (LEARNING)
-    #         target = torch.LongTensor([role])
-    #         loss = loss_function(probs, target)
-    #         # print(loss)
-    #         loss.backward()
-    #         optimizer.step()
+    trained_model = train(NUM_EPOCHS, train_set, model, loss_function, optimizer)
 
 
-    # REMOVE LATER
+    preds_labels = test_performance(dev_set, trained_model)
+    write_predictions(preds_labels, idx2role)
 
-    # count = 0
-    # params2 = {}
-    # for param in model.parameters():
-    #     # print(param)
-    #     params2[count] = param
-    #     count += 1
+    y_pred, y_gold = read_prediction_file()
 
-    # # d1 = {"a":1, "b":2}
-    # # d2 = {"a":1, "b":3}
-    #
-    # # print(len(params1), len(params2))
-    # #
-    # print(params1[0])
-    # print(params2[0])
+    if DESTROY:
+        os.remove(TEMP_PREDICTION_FILE)
 
-def define_prediction(l, label_to_ix):
-    max = -10000000
-    index = 0
-    m_id = 0
-    for t in l:
-        for val in t:
-            if val > max:
-                max = val
-                m_id = index
-            index += 1
-
-    return m_id
-
-
-a = []
-
-# TESTING
-with torch.no_grad():
-    for pred, arg, role in test_set:
-        probs = model((pred, arg))
-        a += [(define_prediction(probs, role), role)]
-        # print("PREDICTED: ", define_prediction(probs, role), "GOLD:", role)
-
-count = 0
-for elem in a:
-    if elem[0] == elem[1]:
-        count += 1
-
-print(count/len(a))
+    # metric_args = {"y_pred": y_pred, "y_true": y_gold, "average": None}
+    metric_args = {"y_pred": y_pred, "y_true": y_gold, "normalize": True}
+    evaluate_performance(accuracy_score, **metric_args)
