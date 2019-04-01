@@ -46,6 +46,38 @@ def print_collection(bag, dictionary=False, delimeter=":"):
         else:
             print(element)
 
+def write_predictions(output_file, predictions, idx2role):
+    """
+    Write predictions to a file in the form of "y_pred   y_gold" in each line
+    :param output_file:     File to write the predictions to
+    :param predictions:     list containing tuples of the form (y_pred, y_gold)
+    :param idx2role:        Mapping role -> integer
+    """
+    f = open(output_file,"w+")
+    for prediction, gold_label in predictions:
+        f.write(idx2role[prediction] + "\t" + idx2role[gold_label] + "\n")
+    f.close()
+
+def read_prediction_file(input_file):
+    """
+    Read predictions from a file in the form of "y_pred   y_gold" in each line
+    :param input_file:     File to read the predictions from
+
+    :return:               Lists of predictions and corresponding true labels
+    """
+    with open(input_file,"r") as f:
+        content = f.readlines()
+    content = [x.strip() for x in content]
+    y_pred = []
+    y_gold = []
+    for element in content:
+        line = element.split("\t")
+        y_pred += [line[0]]
+        y_gold += [line[1]]
+    assert(len(y_pred) == len(y_gold))
+
+    return y_pred, y_gold
+
 
 # ---------- PRE-PROCESSING UTILS
 
@@ -89,17 +121,27 @@ def accumulate_mapping(line_gen, pred_map, arg_map, role_map):
 
 
 def form_reverse_mapping(pred_map, arg_map, role_map):
+    """
+    Reverse respective mappings
+    :param pred_map:    dict that maps predicates to integers
+    :param arg_map:     dict that maps arguments to integers
+    :param role_map:    dict that maps roles to integers
+
+    :return: reversed pred_map, arg_map, role_map [eg. rev_role = idx -> role]
+    """
     pred_rev_map, arg_rev_map, role_rev_map = {}, {}, {}
 
+    # Reverse predicate map
     for k in pred_map:
         pred_rev_map[pred_map[k]] = k
 
+    # Reverse argument map
     for k in arg_map:
         arg_rev_map[arg_map[k]] = k
 
+    # Reverse role map
     for k in role_map:
         role_rev_map[role_map[k]] = k
-
 
     return pred_rev_map, arg_rev_map, role_rev_map
 
@@ -107,6 +149,16 @@ def form_reverse_mapping(pred_map, arg_map, role_map):
 # ---------- TRAINING MECHANISM
 
 def train(num_epochs, training_data, model, loss_fn, optimizer):
+    """
+    Reverse respective mappings
+    :param num_epochs:      Number of epochs to go over the training data
+    :param training_data:   The data to train on
+    :param model:           The model to be trained
+    :param loss_fn:         Loss Function to help in training
+    :param optimizer:       Optimizer function eg. SGD
+
+    :return: a trained model
+    """
     for epoch in range(num_epochs):
         for pred, arg, role in training_data:
 
@@ -128,6 +180,13 @@ def train(num_epochs, training_data, model, loss_fn, optimizer):
 # ---------- PREDICTIONS + EVAL
 
 def test_performance(data, model):
+    """
+    Every now and then evaluate the model on some data
+    :param data:    data set to evaluate the model on
+    :param model:   the model to make use while making predictions on ``data''
+
+    :return: list of tuples of the form (y_pred, y_true)
+    """
     preds_labels = []
     with torch.no_grad():
         for pred, arg, role in data:
@@ -137,6 +196,12 @@ def test_performance(data, model):
     return preds_labels
 
 def demistify_predictions(probs_tensor):
+    """
+    Make a prediction based on the scores/probabilities
+    :param probs_tensor:    Tensor containing the probabilities of each label
+
+    :return:                Index (label) having MAX score/probability
+    """
     max = -sys.maxsize - 1
     index = 0
     m_id = 0
@@ -148,27 +213,12 @@ def demistify_predictions(probs_tensor):
 
     return m_id
 
-def write_predictions(predictions, idx2role):
-    f = open(TEMP_PREDICTION_FILE,"w+")
-    for prediction, gold_label in predictions:
-        f.write(idx2role[prediction] + "\t" + idx2role[gold_label] + "\n")
-    f.close()
-
-def read_prediction_file():
-    with open(TEMP_PREDICTION_FILE,"r") as f:
-        content = f.readlines()
-    content = [x.strip() for x in content]
-    y_pred = []
-    y_gold = []
-    for element in content:
-        line = element.split("\t")
-        y_pred += [line[0]]
-        y_gold += [line[1]]
-    assert(len(y_pred) == len(y_gold))
-
-    return y_pred, y_gold
-
 def evaluate_performance(metric_fn, **kwargs):
+    """
+    Print the requested metric on the arguments given
+    :param metric_fn:   The sklearn metric fucntion to be used
+    :param **kwargs:    The arguments of the metric function
+    """
     print(metric_fn(**kwargs))
 
 
@@ -177,6 +227,10 @@ def evaluate_performance(metric_fn, **kwargs):
 # Driver main
 if __name__ == "__main__":
     # Pre-Processing
+    assert(os.path.exists(TRAINING_FILE_PATH))
+    assert(os.path.exists(DEV_FILE_PATH))
+    assert(os.path.exists(TEST_FILE_PATH))
+
     samples_generator_train = read_perline_json(TRAINING_FILE_PATH)
     samples_generator_dev = read_perline_json(DEV_FILE_PATH)
     samples_generator_test = read_perline_json(TEST_FILE_PATH)
@@ -184,21 +238,19 @@ if __name__ == "__main__":
     pred2idx, arg2idx, role2idx, train_set = accumulate_mapping(
                                                 samples_generator_train,
                                                 {}, {}, {})
-    # print(len(pred2idx), len(arg2idx), len(role2idx))
-
     pred2idx, arg2idx, role2idx, dev_set = accumulate_mapping(
                                                 samples_generator_dev,
                                                 pred2idx, arg2idx, role2idx)
-    # print(len(pred2idx), len(arg2idx), len(role2idx))
-
     pred2idx, arg2idx, role2idx, test_set = accumulate_mapping(
                                                 samples_generator_test,
                                                 pred2idx, arg2idx, role2idx)
-    # print(len(pred2idx), len(arg2idx), len(role2idx))
 
+    idx2pred, idx2arg, idx2role = form_reverse_mapping(pred2idx, arg2idx,
+                                                                    role2idx)
 
-
-    idx2pred, idx2arg, idx2role = form_reverse_mapping(pred2idx, arg2idx, role2idx)
+    assert(len(pred2idx) == len(idx2pred))
+    assert(len(arg2idx) == len(idx2arg))
+    assert(len(role2idx) == len(idx2role))
 
     # Learning
     model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx))
@@ -211,9 +263,9 @@ if __name__ == "__main__":
 
 
     preds_labels = test_performance(dev_set, trained_model)
-    write_predictions(preds_labels, idx2role)
+    write_predictions(TEMP_PREDICTION_FILE, preds_labels, idx2role)
 
-    y_pred, y_gold = read_prediction_file()
+    y_pred, y_gold = read_prediction_file(TEMP_PREDICTION_FILE)
 
     if DESTROY:
         os.remove(TEMP_PREDICTION_FILE)
