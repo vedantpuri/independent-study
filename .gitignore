@@ -29,3 +29,10 @@ MANIFEST
 
 # System Files
 .DS_Store
+
+# Tex Unwanted
+*.fls
+*.aux
+*.fdb_latexmk
+*.log
+*.synctex.gz
