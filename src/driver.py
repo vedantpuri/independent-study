@@ -217,12 +217,12 @@ def demistify_predictions(probs_tensor):
 
     :return:                Index (label) having MAX score/probability
     """
-    max = -sys.maxsize - 1
+    max_val = MIN_INT
     index = 0
     m_id = 0
     for val in probs_tensor:
-        if val > max:
-            max = val
+        if val > max_val:
+            max_val = val
             m_id = index
         index += 1
 
@@ -243,7 +243,7 @@ def evaluate_performance(metric_fn, **kwargs):
 if __name__ == "__main__":
 
     # Playground
-    
+
     # m = [i for i in range(100)]
     # for batch in batcher(m, 10):
     #     print(len(batch))
