@@ -3,6 +3,7 @@
 import os
 import sys
 import json
+import random
 import torch.optim as optim
 from config import *
 from potential_models import *
@@ -148,6 +149,18 @@ def form_reverse_mapping(pred_map, arg_map, role_map):
 
 # ---------- TRAINING MECHANISM
 
+def batcher(samples, batch_size):
+    for i in range(0, len(samples), batch_size):
+        yield samples[i : i + batch_size]
+
+def combine_shuffle(list_a, list_b):
+    combined = list(zip(list_a, list_b))
+    random.shuffle(combined)
+    ret_a, ret_b = zip(*combined)
+
+    return ret_a, ret_b
+
+
 def train(num_epochs, training_data, model, loss_fn, optimizer):
     """
     Reverse respective mappings
@@ -160,6 +173,8 @@ def train(num_epochs, training_data, model, loss_fn, optimizer):
     :return: a trained model
     """
     for epoch in range(num_epochs):
+        # shuffle training data here
+        # get a batch
         for pred, arg, role in training_data:
 
             # REMEMBER to clear out gradients for each instance
@@ -226,6 +241,24 @@ def evaluate_performance(metric_fn, **kwargs):
 
 # Driver main
 if __name__ == "__main__":
+
+    # Playground
+    
+    # m = [i for i in range(100)]
+    # for batch in batcher(m, 10):
+    #     print(len(batch))
+    # a = ["one", "two", "three", "four"]
+    # b = [1,2,3,4]
+    # print(a)
+    # print(b)
+    # print("////////////////")
+    # a, b = combine_shuffle(a, b)
+    # print(a)
+    # print(b)
+    # exit()
+
+
+
     # Pre-Processing
     assert(os.path.exists(TRAINING_FILE_PATH))
     assert(os.path.exists(DEV_FILE_PATH))
@@ -251,6 +284,7 @@ if __name__ == "__main__":
     assert(len(pred2idx) == len(idx2pred))
     assert(len(arg2idx) == len(idx2arg))
     assert(len(role2idx) == len(idx2role))
+
 
     # Learning
     model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx))

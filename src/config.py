@@ -11,3 +11,5 @@ NUM_EPOCHS = 30
 
 TEMP_PREDICTION_FILE = "predictions.txt"
 DESTROY = True
+
+BATCH_SIZE = 10
