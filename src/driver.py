@@ -7,7 +7,7 @@ import random
 import copy
 import numpy as np
 import torch.optim as optim
-from config import *
+from constants import *
 from potential_models import *
 from sklearn.metrics import *
 
@@ -164,7 +164,8 @@ def combine_shuffle(list_a, list_b):
     return ret_a, ret_b
 
 
-def train(num_epochs, training_data, train_labels, model, loss_fn, optimizer, dev_set, dev_labels):
+def train(num_epochs, training_data, model, loss_fn, optimizer, dev_data,
+                                                    batch_size, check_every):
     """
     Reverse respective mappings
     :param num_epochs:      Number of epochs to go over the training data
@@ -175,6 +176,9 @@ def train(num_epochs, training_data, train_labels, model, loss_fn, optimizer, de
 
     :return: a trained model
     """
+    train_samples, train_labels = zip(*training_data)
+    dev_samples, dev_labels = zip(*dev_data)
+
     losses = []
     best_dev_loss = np.inf
     iteration = 0
@@ -182,10 +186,10 @@ def train(num_epochs, training_data, train_labels, model, loss_fn, optimizer, de
 
     for epoch in range(num_epochs):
         # shuffle training data here
-        training_data, train_labels = combine_shuffle(training_data,
+        train_samples, train_labels = combine_shuffle(train_samples,
                                                                 train_labels)
         # get a batch
-        for samples, labels in batcher(training_data, train_labels,BATCH_SIZE):
+        for samples, labels in batcher(train_samples, train_labels, batch_size):
 
             # REMEMBER to clear out gradients for each instance
             model.zero_grad()
@@ -201,19 +205,16 @@ def train(num_epochs, training_data, train_labels, model, loss_fn, optimizer, de
             optimizer.step()
 
             # check every few iterations on the dev dev_set
-            if iteration % CHECK_EVERY == 0:
-                preds_labels, loss = test_performance(dev_set, dev_labels, model,
-                                                                            loss_fn)
+            if iteration % check_every == 0:
+                preds_labels, loss = test_performance(dev_samples, dev_labels,
+                                                                model, loss_fn)
                 losses += [loss]
                 if loss < best_dev_loss:
                     best_dev_loss = loss
                     best_params = copy.deepcopy(model.state_dict())
 
             iteration += 1
-    print(len(training_data))
-    print(iteration)
-    print(best_params)
-    print(losses[:10])
+
     return model
 
 
@@ -229,20 +230,12 @@ def test_performance(data, labels, model, loss_fn):
     """
     preds_labels = []
     with torch.no_grad():
-        # print(len(data))
         probs = model(data)
         target = torch.LongTensor(labels)
         loss = loss_fn(probs, target).item()
-        # print(loss)
-        # print(len(probs))
-        # exit()
         for idx in range(len(data)):
-        # for pred, arg, role in data:
-            # probs = model(data[idx], predict=True)
-            # print(probs)
-            # print(probs.flatten())
-            # exit()
-            preds_labels += [(demistify_predictions(probs[idx].flatten()), labels[idx])]
+            preds_labels += [(demistify_predictions(probs[idx].flatten()),
+                                                                  labels[idx])]
 
     return preds_labels, loss
 
@@ -253,7 +246,10 @@ def demistify_predictions(probs_tensor, maximum=True):
 
     :return:                Index (label) having MAX score/probability
     """
-    return torch.max(probs_tensor, 0)[1].item() if maximum else torch.min(probs_tensor, 0)[1].item()
+    if maximum:
+        return torch.max(probs_tensor, 0)[1].item()
+    else:
+        return torch.min(probs_tensor, 0)[1].item()
 
 def evaluate_performance(metric_fn, **kwargs):
     """
@@ -268,16 +264,34 @@ def evaluate_performance(metric_fn, **kwargs):
 
 # Driver main
 if __name__ == "__main__":
+    # Load configuration
+    configuration = json.load(open(sys.argv[1]))
+    assert(os.path.exists(sys.argv[1]))
 
-    # Pre-Processing
-    assert(os.path.exists(TRAINING_FILE_PATH))
-    assert(os.path.exists(DEV_FILE_PATH))
-    assert(os.path.exists(TEST_FILE_PATH))
+    # Populate variables from config
+    train_file_path = configuration["TRAINING_FILE_PATH"]
+    dev_file_path = configuration["DEV_FILE_PATH"]
+    test_file_path = configuration["TEST_FILE_PATH"]
+    learn_rate = configuration["LEARNING_RATE"]
+    epochs = configuration["NUM_EPOCHS"]
+    batch_size = configuration["BATCH_SIZE"]
+    check_every = configuration["CHECK_EVERY"]
 
-    samples_generator_train = read_perline_json(TRAINING_FILE_PATH)
-    samples_generator_dev = read_perline_json(DEV_FILE_PATH)
-    samples_generator_test = read_perline_json(TEST_FILE_PATH)
+    # Config Checks
+    assert(os.path.exists(train_file_path))
+    assert(os.path.exists(dev_file_path))
+    assert(os.path.exists(test_file_path))
+    assert(learn_rate > 0 and learn_rate < 1)
+    assert(epochs > 10)
+    assert(batch_size > 5)
+    assert(check_every > 3)
 
+    # Form samples
+    samples_generator_train = read_perline_json(train_file_path)
+    samples_generator_dev = read_perline_json(dev_file_path)
+    samples_generator_test = read_perline_json(test_file_path)
+
+    # Form Mappings
     pred2idx, arg2idx, role2idx, train_set, train_labels = accumulate_mapping(
                                                         samples_generator_train,
                                                         {}, {}, {})
@@ -291,8 +305,6 @@ if __name__ == "__main__":
     idx2pred, idx2arg, idx2role = form_reverse_mapping(pred2idx, arg2idx,
                                                                     role2idx)
 
-    # print(dev_set[0])
-    # exit()
     assert(len(pred2idx) == len(idx2pred))
     assert(len(arg2idx) == len(idx2arg))
     assert(len(role2idx) == len(idx2role))
@@ -303,21 +315,23 @@ if __name__ == "__main__":
 
 
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=0.1)
+    optimizer = optim.SGD(model.parameters(), lr=learn_rate)
 
-    trained_model = train(NUM_EPOCHS, train_set, train_labels,
-                                                model, loss_function, optimizer, dev_set, dev_labels)
+    training_data = zip(train_set, train_labels)
+    dev_data = zip(dev_set, dev_labels)
+    trained_model = train(epochs, training_data, model,
+               loss_function, optimizer, dev_data, batch_size, check_every)
 
 
-    # preds_labels = test_performance(dev_set, dev_labels, trained_model,
-    #                                                             loss_function)
-    # write_predictions(TEMP_PREDICTION_FILE, preds_labels, idx2role)
-    #
-    # y_pred, y_gold = read_prediction_file(TEMP_PREDICTION_FILE)
-    #
-    # if DESTROY:
-    #     os.remove(TEMP_PREDICTION_FILE)
-    #
-    # # metric_args = {"y_pred": y_pred, "y_true": y_gold, "average": None}
-    # metric_args = {"y_pred": y_pred, "y_true": y_gold, "normalize": True}
-    # evaluate_performance(accuracy_score, **metric_args)
+    preds_labels, _ = test_performance(test_set, test_labels, trained_model,
+                                                                loss_function)
+    write_predictions(TEMP_PREDICTION_FILE, preds_labels, idx2role)
+
+    y_pred, y_gold = read_prediction_file(TEMP_PREDICTION_FILE)
+
+    if DESTROY:
+        os.remove(TEMP_PREDICTION_FILE)
+
+    # metric_args = {"y_pred": y_pred, "y_true": y_gold, "average": None}
+    metric_args = {"y_pred": y_pred, "y_true": y_gold, "normalize": True}
+    evaluate_performance(accuracy_score, **metric_args)
