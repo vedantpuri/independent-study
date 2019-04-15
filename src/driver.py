@@ -4,6 +4,8 @@ import os
 import sys
 import json
 import random
+import copy
+import numpy as np
 import torch.optim as optim
 from config import *
 from potential_models import *
@@ -93,6 +95,7 @@ def accumulate_mapping(line_gen, pred_map, arg_map, role_map):
     :return: updated pred_map, arg_map, role_map, formatted data-set
     """
     formatted_examples = []
+    formatted_labels = []
     for sample in line_gen:
         # Only one predicate per sample
         predicate = sample[PREDICATE_KEY][0]
@@ -113,12 +116,12 @@ def accumulate_mapping(line_gen, pred_map, arg_map, role_map):
             if role_at_index not in role_map:
                 role_map[role_at_index] = len(role_map)
 
-            # Add example in the format -> (p, a, r)
+            # Add example in the format -> (p, a)
             formatted_examples += [(pred_map[predicate],
-                                       arg_map[argument_at_index],
-                                       role_map[role_at_index])]
+                                     arg_map[argument_at_index])]
+            formatted_labels +=  [role_map[role_at_index]]
 
-    return pred_map, arg_map, role_map, formatted_examples
+    return pred_map, arg_map, role_map, formatted_examples, formatted_labels
 
 
 def form_reverse_mapping(pred_map, arg_map, role_map):
@@ -149,9 +152,9 @@ def form_reverse_mapping(pred_map, arg_map, role_map):
 
 # ---------- TRAINING MECHANISM
 
-def batcher(samples, batch_size):
+def batcher(samples, labels, batch_size):
     for i in range(0, len(samples), batch_size):
-        yield samples[i : i + batch_size]
+        yield samples[i : i + batch_size], labels[i : i + batch_size]
 
 def combine_shuffle(list_a, list_b):
     combined = list(zip(list_a, list_b))
@@ -161,7 +164,7 @@ def combine_shuffle(list_a, list_b):
     return ret_a, ret_b
 
 
-def train(num_epochs, training_data, model, loss_fn, optimizer):
+def train(num_epochs, training_data, train_labels, model, loss_fn, optimizer, dev_set, dev_labels):
     """
     Reverse respective mappings
     :param num_epochs:      Number of epochs to go over the training data
@@ -172,29 +175,51 @@ def train(num_epochs, training_data, model, loss_fn, optimizer):
 
     :return: a trained model
     """
+    losses = []
+    best_dev_loss = np.inf
+    iteration = 0
+
+
     for epoch in range(num_epochs):
         # shuffle training data here
+        training_data, train_labels = combine_shuffle(training_data,
+                                                                train_labels)
         # get a batch
-        for pred, arg, role in training_data:
+        for samples, labels in batcher(training_data, train_labels,BATCH_SIZE):
 
             # REMEMBER to clear out gradients for each instance
             model.zero_grad()
 
             # Obtain the probabilities
-            probs = model((pred, arg))
+            probs = model(samples)
 
             # Computing Loss (LEARNING)
-            target = torch.LongTensor([role])
+            target = torch.LongTensor(labels)
             loss = loss_fn(probs, target)
+            # losses += [loss]
             loss.backward()
             optimizer.step()
 
+            # check every few iterations on the dev dev_set
+            if iteration % CHECK_EVERY == 0:
+                preds_labels, loss = test_performance(dev_set, dev_labels, model,
+                                                                            loss_fn)
+                losses += [loss]
+                if loss < best_dev_loss:
+                    best_dev_loss = loss
+                    best_params = copy.deepcopy(model.state_dict())
+
+            iteration += 1
+    print(len(training_data))
+    print(iteration)
+    print(best_params)
+    print(losses[:10])
     return model
 
 
 # ---------- PREDICTIONS + EVAL
 
-def test_performance(data, model):
+def test_performance(data, labels, model, loss_fn):
     """
     Every now and then evaluate the model on some data
     :param data:    data set to evaluate the model on
@@ -204,29 +229,31 @@ def test_performance(data, model):
     """
     preds_labels = []
     with torch.no_grad():
-        for pred, arg, role in data:
-            probs = model((pred, arg))
-            preds_labels += [(demistify_predictions(probs[0]), role)]
+        # print(len(data))
+        probs = model(data)
+        target = torch.LongTensor(labels)
+        loss = loss_fn(probs, target).item()
+        # print(loss)
+        # print(len(probs))
+        # exit()
+        for idx in range(len(data)):
+        # for pred, arg, role in data:
+            # probs = model(data[idx], predict=True)
+            # print(probs)
+            # print(probs.flatten())
+            # exit()
+            preds_labels += [(demistify_predictions(probs[idx].flatten()), labels[idx])]
 
-    return preds_labels
+    return preds_labels, loss
 
-def demistify_predictions(probs_tensor):
+def demistify_predictions(probs_tensor, maximum=True):
     """
     Make a prediction based on the scores/probabilities
     :param probs_tensor:    Tensor containing the probabilities of each label
 
     :return:                Index (label) having MAX score/probability
     """
-    max_val = MIN_INT
-    index = 0
-    m_id = 0
-    for val in probs_tensor:
-        if val > max_val:
-            max_val = val
-            m_id = index
-        index += 1
-
-    return m_id
+    return torch.max(probs_tensor, 0)[1].item() if maximum else torch.min(probs_tensor, 0)[1].item()
 
 def evaluate_performance(metric_fn, **kwargs):
     """
@@ -242,23 +269,6 @@ def evaluate_performance(metric_fn, **kwargs):
 # Driver main
 if __name__ == "__main__":
 
-    # Playground
-
-    # m = [i for i in range(100)]
-    # for batch in batcher(m, 10):
-    #     print(len(batch))
-    # a = ["one", "two", "three", "four"]
-    # b = [1,2,3,4]
-    # print(a)
-    # print(b)
-    # print("////////////////")
-    # a, b = combine_shuffle(a, b)
-    # print(a)
-    # print(b)
-    # exit()
-
-
-
     # Pre-Processing
     assert(os.path.exists(TRAINING_FILE_PATH))
     assert(os.path.exists(DEV_FILE_PATH))
@@ -268,19 +278,21 @@ if __name__ == "__main__":
     samples_generator_dev = read_perline_json(DEV_FILE_PATH)
     samples_generator_test = read_perline_json(TEST_FILE_PATH)
 
-    pred2idx, arg2idx, role2idx, train_set = accumulate_mapping(
-                                                samples_generator_train,
-                                                {}, {}, {})
-    pred2idx, arg2idx, role2idx, dev_set = accumulate_mapping(
-                                                samples_generator_dev,
-                                                pred2idx, arg2idx, role2idx)
-    pred2idx, arg2idx, role2idx, test_set = accumulate_mapping(
-                                                samples_generator_test,
-                                                pred2idx, arg2idx, role2idx)
+    pred2idx, arg2idx, role2idx, train_set, train_labels = accumulate_mapping(
+                                                        samples_generator_train,
+                                                        {}, {}, {})
+    pred2idx, arg2idx, role2idx, dev_set, dev_labels = accumulate_mapping(
+                                                        samples_generator_dev,
+                                                    pred2idx, arg2idx, role2idx)
+    pred2idx, arg2idx, role2idx, test_set, test_labels = accumulate_mapping(
+                                                        samples_generator_test,
+                                                    pred2idx, arg2idx, role2idx)
 
     idx2pred, idx2arg, idx2role = form_reverse_mapping(pred2idx, arg2idx,
                                                                     role2idx)
 
+    # print(dev_set[0])
+    # exit()
     assert(len(pred2idx) == len(idx2pred))
     assert(len(arg2idx) == len(idx2arg))
     assert(len(role2idx) == len(idx2role))
@@ -293,17 +305,19 @@ if __name__ == "__main__":
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.1)
 
-    trained_model = train(NUM_EPOCHS, train_set, model, loss_function, optimizer)
+    trained_model = train(NUM_EPOCHS, train_set, train_labels,
+                                                model, loss_function, optimizer, dev_set, dev_labels)
 
 
-    preds_labels = test_performance(dev_set, trained_model)
-    write_predictions(TEMP_PREDICTION_FILE, preds_labels, idx2role)
-
-    y_pred, y_gold = read_prediction_file(TEMP_PREDICTION_FILE)
-
-    if DESTROY:
-        os.remove(TEMP_PREDICTION_FILE)
-
-    # metric_args = {"y_pred": y_pred, "y_true": y_gold, "average": None}
-    metric_args = {"y_pred": y_pred, "y_true": y_gold, "normalize": True}
-    evaluate_performance(accuracy_score, **metric_args)
+    # preds_labels = test_performance(dev_set, dev_labels, trained_model,
+    #                                                             loss_function)
+    # write_predictions(TEMP_PREDICTION_FILE, preds_labels, idx2role)
+    #
+    # y_pred, y_gold = read_prediction_file(TEMP_PREDICTION_FILE)
+    #
+    # if DESTROY:
+    #     os.remove(TEMP_PREDICTION_FILE)
+    #
+    # # metric_args = {"y_pred": y_pred, "y_true": y_gold, "average": None}
+    # metric_args = {"y_pred": y_pred, "y_true": y_gold, "normalize": True}
+    # evaluate_performance(accuracy_score, **metric_args)

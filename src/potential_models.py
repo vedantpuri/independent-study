@@ -18,28 +18,57 @@ class RolePredictor(nn.Module):
 
 
     def forward(self, pa_tup, predict=False):
-        p_embed = self.pred_embeddings(torch.tensor(pa_tup[0]))
+        # print(len(pa_tup))
+        # exit()
+        if len(pa_tup) > 2:
+            x = [i[0] for i in pa_tup]
+            y = [i[1] for i in pa_tup]
+        else:
+            x = pa_tup[0]
+            y = pa_tup[1]
+
+        # print(self.pred_embeddings(torch.tensor(x)))
+        # # print(pa_tup[0])
+        # exit()
+        p_embed = self.pred_embeddings(torch.tensor(x))
 
         # dropout
+        # p_embed = nn.functional.dropout(p_embed, p=0.2, training=not predict, inplace=True)
 
-        a_embed = self.argument_embeddings(torch.tensor(pa_tup[1]))
+        a_embed = self.argument_embeddings(torch.tensor(y))
 
         # dropout
+        # a_embed = nn.functional.dropout(a_embed, p=0.2, training=not predict, inplace=True)
 
-        pa_embed = torch.cat((p_embed,a_embed)).view(1, -1)
+        # NOT SURE ABOUT THIS, BUT FIXES
+        # RuntimeError: Dimension out of range (expected to be in range of [-1, 0], but got 1)
+        if predict:
+            # print(len(pa_tup))
+            pa_embed = torch.cat((p_embed,a_embed)).view(1, -1)
+        else:
+            pa_embed = torch.cat((p_embed,a_embed), dim=1)
+
+        # print(pa_embed.shape)
+
 
         # linearity_in
         x = self.linear_in(pa_embed)
+
         # non_linearity
         nl_out = self.non_linearity(x)
 
         # dropout
+        # nl_out = nn.functional.dropout(nl_out, p=0.2, training=not predict)
+
 
         # linear_out
         y = self.linear_out(nl_out)
 
+
         # softmax
         s_max = F.log_softmax(y, dim=1)
+        # print(s_max)
+        # exit()
 
 
         # X-Ent Loss (?)
