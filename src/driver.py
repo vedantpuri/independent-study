@@ -153,10 +153,25 @@ def form_reverse_mapping(pred_map, arg_map, role_map):
 # ---------- TRAINING MECHANISM
 
 def batcher(samples, labels, batch_size):
+    """
+    Provide batch of samples of required size
+    :param samples:         The samples to be batched
+    :param labels:          Corresponding labels of the samples (also batched)
+    :param batch_size:      Size of each batch
+
+    :return:                Yield a batch of samples, labels
+    """
     for i in range(0, len(samples), batch_size):
         yield samples[i : i + batch_size], labels[i : i + batch_size]
 
 def combine_shuffle(list_a, list_b):
+    """
+    Shuffle two lists while maintaining correspondence
+    :param list_a:  One of the lists
+    :param list_b:  The other list
+
+    :return:        Shuffled versions of the lists (correspondence maintained)
+    """
     combined = list(zip(list_a, list_b))
     random.shuffle(combined)
     ret_a, ret_b = zip(*combined)
@@ -167,12 +182,15 @@ def combine_shuffle(list_a, list_b):
 def train(num_epochs, training_data, model, loss_fn, optimizer, dev_data,
                                                     batch_size, check_every):
     """
-    Reverse respective mappings
+    Training function
     :param num_epochs:      Number of epochs to go over the training data
     :param training_data:   The data to train on
     :param model:           The model to be trained
     :param loss_fn:         Loss Function to help in training
     :param optimizer:       Optimizer function eg. SGD
+    :param dev_data:        Dev data to run on to see performance
+    :param batch_size:      Size of one batch in training data
+    :param check_every:     When to check performance on dev_set
 
     :return: a trained model
     """
@@ -183,15 +201,14 @@ def train(num_epochs, training_data, model, loss_fn, optimizer, dev_data,
     best_dev_loss = np.inf
     iteration = 0
 
-
     for epoch in range(num_epochs):
-        # shuffle training data here
+        # Shuffle training data here
         train_samples, train_labels = combine_shuffle(train_samples,
-                                                                train_labels)
-        # get a batch
+                                                                   train_labels)
+        # Get a batch
         for samples, labels in batcher(train_samples, train_labels, batch_size):
 
-            # REMEMBER to clear out gradients for each instance
+            # Remember to clear out gradients for each instance
             model.zero_grad()
 
             # Obtain the probabilities
@@ -200,14 +217,13 @@ def train(num_epochs, training_data, model, loss_fn, optimizer, dev_data,
             # Computing Loss (LEARNING)
             target = torch.LongTensor(labels)
             loss = loss_fn(probs, target)
-            # losses += [loss]
             loss.backward()
             optimizer.step()
 
-            # check every few iterations on the dev dev_set
+            # Check every few iterations on the dev dev_set
             if iteration % check_every == 0:
                 preds_labels, loss = test_performance(dev_samples, dev_labels,
-                                                                model, loss_fn)
+                                                                 model, loss_fn)
                 losses += [loss]
                 if loss < best_dev_loss:
                     best_dev_loss = loss
@@ -215,6 +231,7 @@ def train(num_epochs, training_data, model, loss_fn, optimizer, dev_data,
 
             iteration += 1
 
+    # Change this to return best model from dev set
     return model
 
 
@@ -222,7 +239,7 @@ def train(num_epochs, training_data, model, loss_fn, optimizer, dev_data,
 
 def test_performance(data, labels, model, loss_fn):
     """
-    Every now and then evaluate the model on some data
+    Evaluate the model on some data
     :param data:    data set to evaluate the model on
     :param model:   the model to make use while making predictions on ``data''
 
@@ -235,7 +252,7 @@ def test_performance(data, labels, model, loss_fn):
         loss = loss_fn(probs, target).item()
         for idx in range(len(data)):
             preds_labels += [(demistify_predictions(probs[idx].flatten()),
-                                                                  labels[idx])]
+                                                                   labels[idx])]
 
     return preds_labels, loss
 
@@ -303,17 +320,13 @@ if __name__ == "__main__":
                                                     pred2idx, arg2idx, role2idx)
 
     idx2pred, idx2arg, idx2role = form_reverse_mapping(pred2idx, arg2idx,
-                                                                    role2idx)
-
+                                                                       role2idx)
     assert(len(pred2idx) == len(idx2pred))
     assert(len(arg2idx) == len(idx2arg))
     assert(len(role2idx) == len(idx2role))
 
-
     # Learning
     model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx))
-
-
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=learn_rate)
 
@@ -322,9 +335,8 @@ if __name__ == "__main__":
     trained_model = train(epochs, training_data, model,
                loss_function, optimizer, dev_data, batch_size, check_every)
 
-
     preds_labels, _ = test_performance(test_set, test_labels, trained_model,
-                                                                loss_function)
+                                                                  loss_function)
     write_predictions(TEMP_PREDICTION_FILE, preds_labels, idx2role)
 
     y_pred, y_gold = read_prediction_file(TEMP_PREDICTION_FILE)
