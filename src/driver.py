@@ -197,8 +197,8 @@ def train(num_epochs, training_data, model, loss_fn, optimizer, dev_data,
     train_samples, train_labels = zip(*training_data)
     dev_samples, dev_labels = zip(*dev_data)
 
-    losses = []
-    best_dev_loss = np.inf
+    f1_scores = []
+    best_dev_f1 = - np.inf
     iteration = 0
 
     for epoch in range(num_epochs):
@@ -224,13 +224,17 @@ def train(num_epochs, training_data, model, loss_fn, optimizer, dev_data,
             if iteration % check_every == 0:
                 preds_labels, loss = test_performance(dev_samples, dev_labels,
                                                                  model, loss_fn)
-                losses += [loss]
-                if loss < best_dev_loss:
-                    best_dev_loss = loss
+                # calculate f1 score here and add to list
+                y_pred, y_true = zip(*preds_labels)
+                # micro ?
+                res = f1_score(y_true, y_pred, average='micro')
+                f1_scores += [res]
+                if res > best_dev_f1:
+                    best_dev_f1 = res
                     best_params = copy.deepcopy(model.state_dict())
 
             iteration += 1
-
+    print(best_dev_f1)
     # Change this to return best model from dev set
     return model
 
@@ -274,13 +278,14 @@ def evaluate_performance(metric_fn, **kwargs):
     :param metric_fn:   The sklearn metric fucntion to be used
     :param **kwargs:    The arguments of the metric function
     """
-    print(metric_fn(**kwargs))
+    return metric_fn(**kwargs)
 
 
 # ---------- MAIN EXECUTION
 
 # Driver main
 if __name__ == "__main__":
+    assert(len(sys.argv) == 2)
     # Load configuration
     configuration = json.load(open(sys.argv[1]))
     assert(os.path.exists(sys.argv[1]))
@@ -320,13 +325,15 @@ if __name__ == "__main__":
                                                     pred2idx, arg2idx, role2idx)
 
     idx2pred, idx2arg, idx2role = form_reverse_mapping(pred2idx, arg2idx,
-                                                                       role2idx)
+                                                                   role2idx)
+
     assert(len(pred2idx) == len(idx2pred))
     assert(len(arg2idx) == len(idx2arg))
     assert(len(role2idx) == len(idx2role))
 
     # Learning
     model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx))
+    # loss_fn, optimizer parsing function call here
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=learn_rate)
 
@@ -335,7 +342,7 @@ if __name__ == "__main__":
     trained_model = train(epochs, training_data, model,
                loss_function, optimizer, dev_data, batch_size, check_every)
 
-    preds_labels, _ = test_performance(test_set, test_labels, trained_model,
+    preds_labels, _ = test_performance(dev_set, dev_labels, trained_model,
                                                                   loss_function)
     write_predictions(TEMP_PREDICTION_FILE, preds_labels, idx2role)
 
@@ -346,4 +353,4 @@ if __name__ == "__main__":
 
     # metric_args = {"y_pred": y_pred, "y_true": y_gold, "average": None}
     metric_args = {"y_pred": y_pred, "y_true": y_gold, "normalize": True}
-    evaluate_performance(accuracy_score, **metric_args)
+    print(evaluate_performance(accuracy_score, **metric_args))

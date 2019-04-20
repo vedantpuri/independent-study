@@ -10,16 +10,15 @@ class RolePredictor(nn.Module):
         self.argument_embeddings = nn.Embedding(argument_size, 25)
 
         # linear mapping defined here (could be mapped to any number) [HARD-CODING]
-        self.linear_in = nn.Linear(50, 128)
-        self.linear_out = nn.Linear(128, roles_size)
+        self.linear_in = nn.Linear(50, 28)
+        self.linear_out = nn.Linear(28, roles_size)
 
-        # non-linearity [HARD-CODING]
         self.non_linearity = nn.Tanh()
 
 
     def forward(self, pa_tup, predict=False):
-        x = [i[0] for i in pa_tup]
-        y = [i[1] for i in pa_tup]
+        # Separate preds and args
+        x, y = zip(*pa_tup)
 
         p_embed = self.pred_embeddings(torch.tensor(x))
         # dropout
@@ -42,8 +41,4 @@ class RolePredictor(nn.Module):
         # linear_out
         y = self.linear_out(nl_out)
 
-        # softmax
-        s_max = F.log_softmax(y, dim=1)
-
-        # X-Ent Loss (?)
-        return s_max
+        return y
