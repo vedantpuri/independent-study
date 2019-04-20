@@ -3,17 +3,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class RolePredictor(nn.Module):
-    def __init__(self, predicate_size, argument_size, roles_size):
+    def __init__(self, predicate_size, argument_size, roles_size, drop_p,
+                                                    embed_size, linearity_size):
         super(RolePredictor, self).__init__()
 
-        self.pred_embeddings = nn.Embedding(predicate_size, 25)
-        self.argument_embeddings = nn.Embedding(argument_size, 25)
+        self.pred_embeddings = nn.Embedding(predicate_size, embed_size)
+        self.argument_embeddings = nn.Embedding(argument_size, embed_size)
 
-        # linear mapping defined here (could be mapped to any number) [HARD-CODING]
-        self.linear_in = nn.Linear(50, 28)
-        self.linear_out = nn.Linear(28, roles_size)
+        self.linear_in = nn.Linear(embed_size * 2, linearity_size)
+        self.linear_out = nn.Linear(linearity_size, roles_size)
 
         self.non_linearity = nn.Tanh()
+        self.dropout = drop_p
 
 
     def forward(self, pa_tup, predict=False):
@@ -22,11 +23,13 @@ class RolePredictor(nn.Module):
 
         p_embed = self.pred_embeddings(torch.tensor(x))
         # dropout
-        p_embed = nn.functional.dropout(p_embed, p=0.2, training=not predict, inplace=True)
+        p_embed = nn.functional.dropout(p_embed, p=self.dropout,
+                                             training=not predict, inplace=True)
 
         a_embed = self.argument_embeddings(torch.tensor(y))
         # dropout
-        a_embed = nn.functional.dropout(a_embed, p=0.2, training=not predict, inplace=True)
+        a_embed = nn.functional.dropout(a_embed, p=self.dropout,
+                                             training=not predict, inplace=True)
 
         pa_embed = torch.cat((p_embed,a_embed), dim=1)
 
@@ -36,7 +39,8 @@ class RolePredictor(nn.Module):
         # non_linearity
         nl_out = self.non_linearity(x)
         # dropout
-        nl_out = nn.functional.dropout(nl_out, p=0.2, training=not predict)
+        nl_out = nn.functional.dropout(nl_out, p=self.dropout,
+                                                           training=not predict)
 
         # linear_out
         y = self.linear_out(nl_out)

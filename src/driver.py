@@ -9,6 +9,7 @@ import numpy as np
 import torch.optim as optim
 from constants import *
 from potential_models import *
+from ConfigManager import *
 from sklearn.metrics import *
 
 
@@ -179,29 +180,29 @@ def combine_shuffle(list_a, list_b):
     return ret_a, ret_b
 
 
-def train(num_epochs, training_data, model, loss_fn, optimizer, dev_data,
-                                                    batch_size, check_every):
+def train(epochs, train_data, model, loss_fn, optimizer, dev_data, batch_size,
+                                                                check_every):
     """
     Training function
-    :param num_epochs:      Number of epochs to go over the training data
+    :param epochs:          Number of epochs to go over the training data
     :param training_data:   The data to train on
     :param model:           The model to be trained
-    :param loss_fn:         Loss Function to help in training
+    :param loss_fn:         Loss Function to help in training [data + labels]
     :param optimizer:       Optimizer function eg. SGD
-    :param dev_data:        Dev data to run on to see performance
+    :param dev_data:        Dev data for checking performance [data + labels]
     :param batch_size:      Size of one batch in training data
     :param check_every:     When to check performance on dev_set
 
     :return: a trained model
     """
-    train_samples, train_labels = zip(*training_data)
+    train_samples, train_labels = zip(*train_data)
     dev_samples, dev_labels = zip(*dev_data)
 
     f1_scores = []
     best_dev_f1 = - np.inf
     iteration = 0
 
-    for epoch in range(num_epochs):
+    for epoch in range(epochs):
         # Shuffle training data here
         train_samples, train_labels = combine_shuffle(train_samples,
                                                                    train_labels)
@@ -236,7 +237,7 @@ def train(num_epochs, training_data, model, loss_fn, optimizer, dev_data,
             iteration += 1
     print(best_dev_f1)
     # Change this to return best model from dev set
-    return model
+    return best_params
 
 
 # ---------- PREDICTIONS + EVAL
@@ -281,37 +282,37 @@ def evaluate_performance(metric_fn, **kwargs):
     return metric_fn(**kwargs)
 
 
+
+
+def random_predictor(data, l_size):
+    preds = []
+    for elem in data:
+        preds += [np.random.randint(0, l_size)]
+    return preds
+
+def majority_predictor(data, majority_label):
+    preds = []
+    for elem in data:
+        preds += [majority_label]
+    return preds
+
+
+
 # ---------- MAIN EXECUTION
 
 # Driver main
 if __name__ == "__main__":
     assert(len(sys.argv) == 2)
     # Load configuration
-    configuration = json.load(open(sys.argv[1]))
     assert(os.path.exists(sys.argv[1]))
-
-    # Populate variables from config
-    train_file_path = configuration["TRAINING_FILE_PATH"]
-    dev_file_path = configuration["DEV_FILE_PATH"]
-    test_file_path = configuration["TEST_FILE_PATH"]
-    learn_rate = configuration["LEARNING_RATE"]
-    epochs = configuration["NUM_EPOCHS"]
-    batch_size = configuration["BATCH_SIZE"]
-    check_every = configuration["CHECK_EVERY"]
-
-    # Config Checks
-    assert(os.path.exists(train_file_path))
-    assert(os.path.exists(dev_file_path))
-    assert(os.path.exists(test_file_path))
-    assert(learn_rate > 0 and learn_rate < 1)
-    assert(epochs > 10)
-    assert(batch_size > 5)
-    assert(check_every > 3)
+    configuration = ConfigManager(sys.argv[1])
+    configuration.parse_config()
+    print(configuration.train_file_path)
 
     # Form samples
-    samples_generator_train = read_perline_json(train_file_path)
-    samples_generator_dev = read_perline_json(dev_file_path)
-    samples_generator_test = read_perline_json(test_file_path)
+    samples_generator_train = read_perline_json(configuration.train_file_path)
+    samples_generator_dev = read_perline_json(configuration.dev_file_path)
+    samples_generator_test = read_perline_json(configuration.test_file_path)
 
     # Form Mappings
     pred2idx, arg2idx, role2idx, train_set, train_labels = accumulate_mapping(
@@ -331,26 +332,81 @@ if __name__ == "__main__":
     assert(len(arg2idx) == len(idx2arg))
     assert(len(role2idx) == len(idx2role))
 
+
     # Learning
-    model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx))
+    model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx),
+                            configuration.drop_p, configuration.embed_size,
+                                                   configuration.linearity_size)
     # loss_fn, optimizer parsing function call here
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=learn_rate)
+    optimizer = optim.SGD(model.parameters(), lr=configuration.learn_rate)
 
     training_data = zip(train_set, train_labels)
     dev_data = zip(dev_set, dev_labels)
-    trained_model = train(epochs, training_data, model,
-               loss_function, optimizer, dev_data, batch_size, check_every)
+    best_params = train(configuration.epochs, training_data, model, loss_function,
+       optimizer, dev_data, configuration.batch_size, configuration.check_every)
 
-    preds_labels, _ = test_performance(dev_set, dev_labels, trained_model,
-                                                                  loss_function)
-    write_predictions(TEMP_PREDICTION_FILE, preds_labels, idx2role)
+    torch.save({
+            'p2i': len(pred2idx),
+            'a2i': len(arg2idx),
+            'r2i': len(role2idx),
+            'drop': configuration.drop_p,
+            'model_state_dict': best_params,
+            }, "model_file")
 
-    y_pred, y_gold = read_prediction_file(TEMP_PREDICTION_FILE)
+    exit()
 
-    if DESTROY:
-        os.remove(TEMP_PREDICTION_FILE)
-
-    # metric_args = {"y_pred": y_pred, "y_true": y_gold, "average": None}
-    metric_args = {"y_pred": y_pred, "y_true": y_gold, "normalize": True}
-    print(evaluate_performance(accuracy_score, **metric_args))
+    #
+    # loader = torch.load("model_file")
+    # trained_model = RolePredictor(loader['p2i'], loader['a2i'], loader['r2i'])
+    # trained_model.load_state_dict(loader['model_state_dict'])
+    # # debugging
+    # # for name, param in trained_model.named_parameters():
+    # #     if param.requires_grad:
+    # #         print(name, param.data)
+    #
+    # # print(trained_model)
+    #
+    # # loss_function = nn.CrossEntropyLoss()
+    # # optimizer = optim.SGD(trained_model.parameters(), lr=learn_rate)
+    # # # exit()
+    # # preds_labels, _ = test_performance(test_set, test_labels, trained_model,
+    # #                                                               loss_function)
+    # # write_predictions(TEMP_PREDICTION_FILE, preds_labels, idx2role)
+    # #
+    # # y_pred, y_gold = read_prediction_file(TEMP_PREDICTION_FILE)
+    # #
+    # # if DESTROY:
+    # #     os.remove(TEMP_PREDICTION_FILE)
+    # #
+    # # # metric_args = {"y_pred": y_pred, "y_true": y_gold, "average": None}
+    # # # metric_args = {"y_pred": y_pred, "y_true": y_gold, "normalize": True}
+    # # metric_args = {"y_pred": y_pred, "y_true": y_gold, "average":'micro'}
+    # # print(evaluate_performance(recall_score, **metric_args))
+    # # exit()
+    # class_count = {}
+    # for x in train_labels:
+    #     if x in class_count:
+    #         class_count[x] += 1
+    #     else:
+    #         class_count[x] = 1
+    #
+    # for x in dev_labels:
+    #     if x in class_count:
+    #         class_count[x] += 1
+    #     else:
+    #         class_count[x] = 1
+    #
+    # for x in test_labels:
+    #     if x in class_count:
+    #         class_count[x] += 1
+    #     else:
+    #         class_count[x] = 1
+    # # print(class_count)
+    # # y_pred = majority_predictor(test_set, 4)
+    # # metric_args = {"y_pred": y_pred, "y_true": test_labels, "average":'micro'}
+    # # print(evaluate_performance(recall_score, **metric_args))
+    # #
+    # y_pred = random_predictor(test_set, len(role2idx))
+    # metric_args = {"y_pred": y_pred, "y_true": test_labels, "average":'micro'}
+    # print(evaluate_performance(recall_score, **metric_args))
