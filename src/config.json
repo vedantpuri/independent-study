@@ -9,5 +9,7 @@
   "LINEARITY_SIZE" : 28,
   "BATCH_SIZE" : 10,
   "CHECK_EVERY" : 15,
-  "MODEL_DUMP_FILE" : "model_file"
+  "MODEL_DUMP_FILE" : "model_file",
+  "TEST_PRED_FILE_DESTROY": true,
+  "RUN_BASELINES": true
 }

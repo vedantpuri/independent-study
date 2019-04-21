@@ -83,6 +83,18 @@ def read_prediction_file(input_file):
 
     return y_pred, y_gold
 
+def plot_graph(x_axis, y_axis, x_label, y_label, fig_name):
+        # print("Plotting CV Graph ...")
+        graph_dir = '../Figures/'
+        if not os.path.isdir(graph_dir):
+            os.makedirs(graph_dir)
+        pyplot.xticks(x_axis)
+        pyplot.xlabel(x_label)
+        pyplot.ylabel(y_label)
+        pyplot.plot(x_axis, y_axis)
+        pyplot.savefig(graph_dir + fig_name)
+        pyplot.close()
+        # print('Plot Complete. Saved as: "', graph_dir + fig_name, '"')
 
 # ---------- PRE-PROCESSING UTILS
 
@@ -287,7 +299,7 @@ def evaluate_performance(metric_fn, predictions, labels, extra_args):
 def random_predictor(data, label_size):
     preds = []
     for elem in data:
-        preds += [np.random.randint(0, l_size)]
+        preds += [np.random.randint(0, label_size)]
     return preds
 
 def majority_predictor(data, majority_label):
@@ -296,9 +308,19 @@ def majority_predictor(data, majority_label):
         preds += [majority_label]
     return preds
 
+# calculate precision, recall, f1
+def perform_benchmarking(predictions, labels):
+    p = evaluate_performance(precision_score, predictions, labels, {"average":'micro'})
+    r = evaluate_performance(recall_score, predictions, labels, {"average":'micro'})
+    f1 = evaluate_performance(f1_score, predictions, labels, {"average":'micro'})
 
+    return p, r, f1
 
 # ---------- MAIN EXECUTION
+# https://stackoverflow.com/questions/1518522/find-the-most-common-element-in-a-list
+def most_common(lst):
+    return max(set(lst), key=lst.count)
+
 
 # Driver main
 if __name__ == "__main__":
@@ -333,85 +355,67 @@ if __name__ == "__main__":
 
 
     # Learning
-    model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx),
-                            configuration.drop_p, configuration.embed_size,
-                                                   configuration.linearity_size)
-    # loss_fn, optimizer parsing function call here
-    loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=configuration.learn_rate)
-
-    training_data = zip(train_set, train_labels)
-    dev_data = zip(dev_set, dev_labels)
-    results = train(configuration, training_data, model, loss_function,
-                                                            optimizer, dev_data)
-    best_params, losses, dev_f1_scores = results
-    # its = [x  for x in range(len(f1dev))]
-    # plt.plot(range(configuration.epochs), l)
-    # plt.show()
-    torch.save({
-            'p2i': len(pred2idx),
-            'a2i': len(arg2idx),
-            'r2i': len(role2idx),
-            'drop': configuration.drop_p,
-            'embed': configuration.embed_size,
-            'linearity': configuration.linearity_size,
-            'model_state_dict': best_params,
-            }, configuration.model_dump_file)
-
-    exit()
-
+    # model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx),
+    #                         configuration.drop_p, configuration.embed_size,
+    #                                                configuration.linearity_size)
+    # # loss_fn, optimizer parsing function call here
+    # loss_function = nn.CrossEntropyLoss()
+    # optimizer = optim.SGD(model.parameters(), lr=configuration.learn_rate)
     #
+    # training_data = zip(train_set, train_labels)
+    # dev_data = zip(dev_set, dev_labels)
+    # results = train(configuration, training_data, model, loss_function,
+    #                                                         optimizer, dev_data)
+    # best_params, losses, dev_f1_scores = results
+    # torch.save({
+    #         'p2i': len(pred2idx),
+    #         'a2i': len(arg2idx),
+    #         'r2i': len(role2idx),
+    #         'drop': configuration.drop_p,
+    #         'embed': configuration.embed_size,
+    #         'linearity': configuration.linearity_size,
+    #         'model_state_dict': best_params,
+    #         }, configuration.model_dump_file)
+    #
+
     loader = torch.load(configuration.model_dump_file)
     trained_model = RolePredictor(loader['p2i'], loader['a2i'], loader['r2i'],
                            loader['drop'], loader['embed'], loader['linearity'])
     trained_model.load_state_dict(loader['model_state_dict'])
-    # # debugging
-    # # for name, param in trained_model.named_parameters():
-    # #     if param.requires_grad:
-    # #         print(name, param.data)
-    #
-    # # print(trained_model)
-    #
-    # # loss_function = nn.CrossEntropyLoss()
-    # # optimizer = optim.SGD(trained_model.parameters(), lr=learn_rate)
-    # # # exit()
-    # # preds_labels, _ = test_performance(test_set, test_labels, trained_model,
-    # #                                                               loss_function)
-    # # write_predictions(TEMP_PREDICTION_FILE, preds_labels, idx2role)
-    # #
-    # # y_pred, y_gold = read_prediction_file(TEMP_PREDICTION_FILE)
-    # #
-    # # if DESTROY:
-    # #     os.remove(TEMP_PREDICTION_FILE)
-    # #
-    # # # metric_args = {"y_pred": y_pred, "y_true": y_gold, "average": None}
-    # # # metric_args = {"y_pred": y_pred, "y_true": y_gold, "normalize": True}
-    # # metric_args = {"y_pred": y_pred, "y_true": y_gold, "average":'micro'}
-    # # print(evaluate_performance(recall_score, **metric_args))
-    # # exit()
-    # class_count = {}
-    # for x in train_labels:
-    #     if x in class_count:
-    #         class_count[x] += 1
-    #     else:
-    #         class_count[x] = 1
-    #
-    # for x in dev_labels:
-    #     if x in class_count:
-    #         class_count[x] += 1
-    #     else:
-    #         class_count[x] = 1
-    #
-    # for x in test_labels:
-    #     if x in class_count:
-    #         class_count[x] += 1
-    #     else:
-    #         class_count[x] = 1
-    # # print(class_count)
-    # # y_pred = majority_predictor(test_set, 4)
-    # # metric_args = {"y_pred": y_pred, "y_true": test_labels, "average":'micro'}
-    # # print(evaluate_performance(recall_score, **metric_args))
-    # #
-    # y_pred = random_predictor(test_set, len(role2idx))
-    # metric_args = {"y_pred": y_pred, "y_true": test_labels, "average":'micro'}
-    # print(evaluate_performance(recall_score, **metric_args))
+    loss_function = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(trained_model.parameters(), lr=configuration.learn_rate)
+
+    # test set evaluation
+    predictions = model_predict(test_set, trained_model)
+    write_predictions(TEMP_PREDICTION_FILE, zip(predictions, test_labels), idx2role)
+
+    if configuration.test_pred_file_destroy:
+        os.remove(TEMP_PREDICTION_FILE)
+
+    print("TEST SET")
+    p, r, f1 = perform_benchmarking(predictions, test_labels)
+    print(p, r, f1)
+
+    print("TRAIN SET")
+    predictions = model_predict(train_set, trained_model)
+    p, r, f1 = perform_benchmarking(predictions, train_labels)
+    print(p, r, f1)
+
+    print("DEV SET")
+    predictions = model_predict(dev_set, trained_model)
+    p, r, f1 = perform_benchmarking(predictions, dev_labels)
+    print(p, r, f1)
+
+    if configuration.run_baselines:
+        # Random Prediction Baseline [TEST SET]
+        print("RANDOM PREDICTION BASELINE TEST SET")
+        predictions = random_predictor(test_set, len(role2idx))
+        p, r, f1 = perform_benchmarking(predictions, test_labels)
+        print(p, r, f1)
+
+        # Majority Label Baseline [TEST SET]
+        print("MAJORITY PREDICTION BASELINE TEST SET")
+        majority_label = most_common(train_labels + dev_labels + test_labels)
+        predictions = random_predictor(test_set, majority_label)
+        p, r, f1 = perform_benchmarking(predictions, test_labels)
+        print(p, r, f1)

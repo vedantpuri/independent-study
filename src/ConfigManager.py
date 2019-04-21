@@ -40,3 +40,5 @@ class ConfigManager:
         assert(self.check_every > 3)
 
         self.model_dump_file = configuration["MODEL_DUMP_FILE"]
+        self.test_pred_file_destroy = configuration["TEST_PRED_FILE_DESTROY"]
+        self.run_baselines = configuration["RUN_BASELINES"]
