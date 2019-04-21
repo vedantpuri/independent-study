@@ -19,14 +19,14 @@ class RolePredictor(nn.Module):
 
     def forward(self, pa_tup, predict=False):
         # Separate preds and args
-        x, y = zip(*pa_tup)
+        preds, args = zip(*pa_tup)
 
-        p_embed = self.pred_embeddings(torch.tensor(x))
+        p_embed = self.pred_embeddings(torch.tensor(preds))
         # dropout
         p_embed = nn.functional.dropout(p_embed, p=self.dropout,
                                              training=not predict, inplace=True)
 
-        a_embed = self.argument_embeddings(torch.tensor(y))
+        a_embed = self.argument_embeddings(torch.tensor(args))
         # dropout
         a_embed = nn.functional.dropout(a_embed, p=self.dropout,
                                              training=not predict, inplace=True)

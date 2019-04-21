@@ -3,12 +3,11 @@
   "DEV_FILE_PATH" : "../data/supfex-dev-gold.json",
   "TEST_FILE_PATH" : "../data/supfex-test-gold.json",
   "NUM_EPOCHS" : 30,
-  "LOSS_FN" : "xent",
   "DROPOUT_P" : 0.2,
-  "OPTIMIZER" : "sgd",
   "LEARNING_RATE" : 0.1,
   "EMBED_SIZE" : 25,
   "LINEARITY_SIZE" : 28,
   "BATCH_SIZE" : 10,
-  "CHECK_EVERY" : 15
+  "CHECK_EVERY" : 15,
+  "MODEL_DUMP_FILE" : "model_file"
 }

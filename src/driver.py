@@ -6,6 +6,7 @@ import json
 import random
 import copy
 import numpy as np
+import matplotlib.pyplot as plt
 import torch.optim as optim
 from constants import *
 from potential_models import *
@@ -180,8 +181,7 @@ def combine_shuffle(list_a, list_b):
     return ret_a, ret_b
 
 
-def train(epochs, train_data, model, loss_fn, optimizer, dev_data, batch_size,
-                                                                check_every):
+def train(config, train_data, model, loss_fn, optimizer, dev_data):
     """
     Training function
     :param epochs:          Number of epochs to go over the training data
@@ -198,16 +198,19 @@ def train(epochs, train_data, model, loss_fn, optimizer, dev_data, batch_size,
     train_samples, train_labels = zip(*train_data)
     dev_samples, dev_labels = zip(*dev_data)
 
-    f1_scores = []
+    dev_f1_scores = []
     best_dev_f1 = - np.inf
     iteration = 0
+    epoch_losses = []
+    iter_losses = []
 
-    for epoch in range(epochs):
+    for epoch in range(config.epochs):
         # Shuffle training data here
         train_samples, train_labels = combine_shuffle(train_samples,
                                                                    train_labels)
         # Get a batch
-        for samples, labels in batcher(train_samples, train_labels, batch_size):
+        for samples, labels in batcher(train_samples, train_labels,
+                                                             config.batch_size):
 
             # Remember to clear out gradients for each instance
             model.zero_grad()
@@ -218,48 +221,44 @@ def train(epochs, train_data, model, loss_fn, optimizer, dev_data, batch_size,
             # Computing Loss (LEARNING)
             target = torch.LongTensor(labels)
             loss = loss_fn(probs, target)
+            iter_losses += [loss.item()]
             loss.backward()
             optimizer.step()
 
             # Check every few iterations on the dev dev_set
-            if iteration % check_every == 0:
-                preds_labels, loss = test_performance(dev_samples, dev_labels,
-                                                                 model, loss_fn)
-                # calculate f1 score here and add to list
-                y_pred, y_true = zip(*preds_labels)
-                # micro ?
-                res = f1_score(y_true, y_pred, average='micro')
-                f1_scores += [res]
+            if iteration % config.check_every == 0:
+                predictions = model_predict(dev_samples, model)
+                res = evaluate_performance(f1_score, predictions, dev_labels, {"average":'micro'})
+                dev_f1_scores += [res]
                 if res > best_dev_f1:
                     best_dev_f1 = res
                     best_params = copy.deepcopy(model.state_dict())
 
             iteration += 1
+        epoch_losses += [np.mean(iter_losses)]
+        iter_losses = []
     print(best_dev_f1)
     # Change this to return best model from dev set
-    return best_params
+    return best_params, epoch_losses, dev_f1_scores
 
 
 # ---------- PREDICTIONS + EVAL
 
-def test_performance(data, labels, model, loss_fn):
+def model_predict(data, model):
     """
     Evaluate the model on some data
     :param data:    data set to evaluate the model on
     :param model:   the model to make use while making predictions on ``data''
 
-    :return: list of tuples of the form (y_pred, y_true)
+    :return:        list of predictions
     """
-    preds_labels = []
+    predictions = []
     with torch.no_grad():
         probs = model(data)
-        target = torch.LongTensor(labels)
-        loss = loss_fn(probs, target).item()
         for idx in range(len(data)):
-            preds_labels += [(demistify_predictions(probs[idx].flatten()),
-                                                                   labels[idx])]
+            predictions += [demistify_predictions(probs[idx].flatten())]
 
-    return preds_labels, loss
+    return predictions
 
 def demistify_predictions(probs_tensor, maximum=True):
     """
@@ -273,18 +272,19 @@ def demistify_predictions(probs_tensor, maximum=True):
     else:
         return torch.min(probs_tensor, 0)[1].item()
 
-def evaluate_performance(metric_fn, **kwargs):
+def evaluate_performance(metric_fn, predictions, labels, extra_args):
     """
-    Print the requested metric on the arguments given
+    Provide the requested metric on the arguments given
     :param metric_fn:   The sklearn metric fucntion to be used
     :param **kwargs:    The arguments of the metric function
     """
-    return metric_fn(**kwargs)
+    # standard args for every sklearn metric fn
+    sklearn_std_args = {"y_pred": predictions, "y_true": labels}
+    final_args = {**sklearn_std_args, **extra_args}
+    return metric_fn(**final_args)
 
 
-
-
-def random_predictor(data, l_size):
+def random_predictor(data, label_size):
     preds = []
     for elem in data:
         preds += [np.random.randint(0, l_size)]
@@ -303,11 +303,10 @@ def majority_predictor(data, majority_label):
 # Driver main
 if __name__ == "__main__":
     assert(len(sys.argv) == 2)
-    # Load configuration
     assert(os.path.exists(sys.argv[1]))
     configuration = ConfigManager(sys.argv[1])
+    # Load configuration
     configuration.parse_config()
-    print(configuration.train_file_path)
 
     # Form samples
     samples_generator_train = read_perline_json(configuration.train_file_path)
@@ -343,23 +342,29 @@ if __name__ == "__main__":
 
     training_data = zip(train_set, train_labels)
     dev_data = zip(dev_set, dev_labels)
-    best_params = train(configuration.epochs, training_data, model, loss_function,
-       optimizer, dev_data, configuration.batch_size, configuration.check_every)
-
+    results = train(configuration, training_data, model, loss_function,
+                                                            optimizer, dev_data)
+    best_params, losses, dev_f1_scores = results
+    # its = [x  for x in range(len(f1dev))]
+    # plt.plot(range(configuration.epochs), l)
+    # plt.show()
     torch.save({
             'p2i': len(pred2idx),
             'a2i': len(arg2idx),
             'r2i': len(role2idx),
             'drop': configuration.drop_p,
+            'embed': configuration.embed_size,
+            'linearity': configuration.linearity_size,
             'model_state_dict': best_params,
-            }, "model_file")
+            }, configuration.model_dump_file)
 
     exit()
 
     #
-    # loader = torch.load("model_file")
-    # trained_model = RolePredictor(loader['p2i'], loader['a2i'], loader['r2i'])
-    # trained_model.load_state_dict(loader['model_state_dict'])
+    loader = torch.load(configuration.model_dump_file)
+    trained_model = RolePredictor(loader['p2i'], loader['a2i'], loader['r2i'],
+                           loader['drop'], loader['embed'], loader['linearity'])
+    trained_model.load_state_dict(loader['model_state_dict'])
     # # debugging
     # # for name, param in trained_model.named_parameters():
     # #     if param.requires_grad:
