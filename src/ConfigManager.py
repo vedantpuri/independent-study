@@ -22,7 +22,7 @@ class ConfigManager:
         assert(self.epochs > 10)
 
         self.drop_p = configuration["DROPOUT_P"]
-        assert(self.drop_p > 0 and self.drop_p < 1)
+        assert(self.drop_p >= 0 and self.drop_p < 1)
 
         self.learn_rate = configuration["LEARNING_RATE"]
         assert(self.learn_rate > 0 and self.learn_rate < 1)
@@ -40,5 +40,5 @@ class ConfigManager:
         assert(self.check_every > 3)
 
         self.model_dump_file = configuration["MODEL_DUMP_FILE"]
-        self.test_pred_file_destroy = configuration["TEST_PRED_FILE_DESTROY"]
+        self.dump_test_preds = configuration["DUMP_TEST_PREDS"]
         self.run_baselines = configuration["RUN_BASELINES"]

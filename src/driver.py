@@ -3,15 +3,16 @@
 import os
 import sys
 import json
-import random
 import copy
+import random
 import numpy as np
-import matplotlib.pyplot as plt
 import torch.optim as optim
+import matplotlib.pyplot as plt
+
 from constants import *
-from potential_models import *
 from ConfigManager import *
 from sklearn.metrics import *
+from potential_models import *
 
 
 # ---------- I/O UTILS
@@ -20,7 +21,7 @@ from sklearn.metrics import *
 def read_perline_json(json_file_path):
     """
     Read per line JSON and yield.
-    :param json_file: Just a open file. file-like with a next method.
+    :param json_file: Just an open file. file-like with a next method.
 
     :return:          yield one json object.
     """
@@ -84,17 +85,24 @@ def read_prediction_file(input_file):
     return y_pred, y_gold
 
 def plot_graph(x_axis, y_axis, x_label, y_label, fig_name):
-        # print("Plotting CV Graph ...")
-        graph_dir = '../Figures/'
-        if not os.path.isdir(graph_dir):
-            os.makedirs(graph_dir)
-        pyplot.xticks(x_axis)
-        pyplot.xlabel(x_label)
-        pyplot.ylabel(y_label)
-        pyplot.plot(x_axis, y_axis)
-        pyplot.savefig(graph_dir + fig_name)
-        pyplot.close()
-        # print('Plot Complete. Saved as: "', graph_dir + fig_name, '"')
+    """
+    Plots the graph and saves it as ../Figures/$fig_name$
+    :param x_axis:      Horizontal axis values
+    :param y_axis:      Vertical axis values
+    :param x_label:     Horizontal axis label
+    :param y_label:     Vertical axis label
+    :param fig_name:    Name of figure to save it as
+    """
+    # print("Plotting CV Graph ...")
+    graph_dir = '../Figures/'
+    if not os.path.isdir(graph_dir):
+        os.makedirs(graph_dir)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.plot(x_axis, y_axis)
+    plt.savefig(graph_dir + fig_name)
+    plt.close()
+    # print('Plot Complete. Saved as: "', graph_dir + fig_name, '"')
 
 # ---------- PRE-PROCESSING UTILS
 
@@ -196,14 +204,12 @@ def combine_shuffle(list_a, list_b):
 def train(config, train_data, model, loss_fn, optimizer, dev_data):
     """
     Training function
-    :param epochs:          Number of epochs to go over the training data
-    :param training_data:   The data to train on
+    :param config:          Config data containing epochs,batch_size,check_every
+    :param train_data:      The data to train on
     :param model:           The model to be trained
     :param loss_fn:         Loss Function to help in training [data + labels]
     :param optimizer:       Optimizer function eg. SGD
     :param dev_data:        Dev data for checking performance [data + labels]
-    :param batch_size:      Size of one batch in training data
-    :param check_every:     When to check performance on dev_set
 
     :return: a trained model
     """
@@ -240,7 +246,8 @@ def train(config, train_data, model, loss_fn, optimizer, dev_data):
             # Check every few iterations on the dev dev_set
             if iteration % config.check_every == 0:
                 predictions = model_predict(dev_samples, model)
-                res = evaluate_performance(f1_score, predictions, dev_labels, {"average":'micro'})
+                res = evaluate_performance(f1_score, predictions, dev_labels,
+                                                            {"average":'micro'})
                 dev_f1_scores += [res]
                 if res > best_dev_f1:
                     best_dev_f1 = res
@@ -249,8 +256,7 @@ def train(config, train_data, model, loss_fn, optimizer, dev_data):
             iteration += 1
         epoch_losses += [np.mean(iter_losses)]
         iter_losses = []
-    print(best_dev_f1)
-    # Change this to return best model from dev set
+
     return best_params, epoch_losses, dev_f1_scores
 
 
@@ -266,7 +272,7 @@ def model_predict(data, model):
     """
     predictions = []
     with torch.no_grad():
-        probs = model(data)
+        probs = model(data, True)
         for idx in range(len(data)):
             predictions += [demistify_predictions(probs[idx].flatten())]
 
@@ -276,6 +282,7 @@ def demistify_predictions(probs_tensor, maximum=True):
     """
     Make a prediction based on the scores/probabilities
     :param probs_tensor:    Tensor containing the probabilities of each label
+    :param maximum:         Whether to chose maximum score or minimum
 
     :return:                Index (label) having MAX score/probability
     """
@@ -287,29 +294,55 @@ def demistify_predictions(probs_tensor, maximum=True):
 def evaluate_performance(metric_fn, predictions, labels, extra_args):
     """
     Provide the requested metric on the arguments given
-    :param metric_fn:   The sklearn metric fucntion to be used
-    :param **kwargs:    The arguments of the metric function
+    :param metric_fn:       The sklearn metric fucntion to be used
+    :param predictions:     Predictions from the model
+    :param labels:          Gold labels
+    :param extra_args:      Additional args for the metric fn
+
+    :return:                The value returned from the metric function
     """
     # standard args for every sklearn metric fn
     sklearn_std_args = {"y_pred": predictions, "y_true": labels}
     final_args = {**sklearn_std_args, **extra_args}
+
     return metric_fn(**final_args)
 
 
 def random_predictor(data, label_size):
+    """
+    :param data:        Data to be predicted on
+    :param label_size:  Number of labels available for classification
+
+    :return:            Random predictions for the data
+    """
     preds = []
     for elem in data:
         preds += [np.random.randint(0, label_size)]
+
     return preds
 
 def majority_predictor(data, majority_label):
+    """
+    :param data:            Data to be predicted on
+    :param majority_label:  The label present in dominance in the ENTIRE dataset
+
+    :return:                Majority label predictions for every sample in data
+    """
     preds = []
     for elem in data:
         preds += [majority_label]
+
     return preds
 
 # calculate precision, recall, f1
 def perform_benchmarking(predictions, labels):
+    """
+    Evaluate predictions and labels on these metrics: precision, recall, f1
+    :param predictions:     Predictions made by some model on some data
+    :param labels:          Labels of that data
+
+    :return:                A triple: precision, recall, f1 (In that order)
+    """
     p = evaluate_performance(precision_score, predictions, labels, {"average":'micro'})
     r = evaluate_performance(recall_score, predictions, labels, {"average":'micro'})
     f1 = evaluate_performance(f1_score, predictions, labels, {"average":'micro'})
@@ -317,17 +350,23 @@ def perform_benchmarking(predictions, labels):
     return p, r, f1
 
 # ---------- MAIN EXECUTION
-# https://stackoverflow.com/questions/1518522/find-the-most-common-element-in-a-list
-def most_common(lst):
-    return max(set(lst), key=lst.count)
 
+# https://stackoverflow.com/a/1518632/9319690
+def most_common(lst):
+    """
+    Return the majority element in a list
+    :param lst:     The collection of items [list assumed]
+
+    :return:        The element that occurs most frequently
+    """
+    return max(set(lst), key=lst.count)
 
 # Driver main
 if __name__ == "__main__":
+    # Load configuration
     assert(len(sys.argv) == 2)
     assert(os.path.exists(sys.argv[1]))
     configuration = ConfigManager(sys.argv[1])
-    # Load configuration
     configuration.parse_config()
 
     # Form samples
@@ -348,49 +387,44 @@ if __name__ == "__main__":
 
     idx2pred, idx2arg, idx2role = form_reverse_mapping(pred2idx, arg2idx,
                                                                    role2idx)
-
     assert(len(pred2idx) == len(idx2pred))
     assert(len(arg2idx) == len(idx2arg))
     assert(len(role2idx) == len(idx2role))
 
-
     # Learning
-    # model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx),
-    #                         configuration.drop_p, configuration.embed_size,
-    #                                                configuration.linearity_size)
-    # # loss_fn, optimizer parsing function call here
-    # loss_function = nn.CrossEntropyLoss()
-    # optimizer = optim.SGD(model.parameters(), lr=configuration.learn_rate)
-    #
-    # training_data = zip(train_set, train_labels)
-    # dev_data = zip(dev_set, dev_labels)
-    # results = train(configuration, training_data, model, loss_function,
-    #                                                         optimizer, dev_data)
-    # best_params, losses, dev_f1_scores = results
-    # torch.save({
-    #         'p2i': len(pred2idx),
-    #         'a2i': len(arg2idx),
-    #         'r2i': len(role2idx),
-    #         'drop': configuration.drop_p,
-    #         'embed': configuration.embed_size,
-    #         'linearity': configuration.linearity_size,
-    #         'model_state_dict': best_params,
-    #         }, configuration.model_dump_file)
-    #
+    model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx),
+                            configuration.drop_p, configuration.embed_size,
+                                                   configuration.linearity_size)
+    loss_function = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=configuration.learn_rate)
 
+    training_data = zip(train_set, train_labels)
+    dev_data = zip(dev_set, dev_labels)
+    results = train(configuration, training_data, model, loss_function,
+                                                            optimizer, dev_data)
+    best_params, losses, dev_f1_scores = results
+    # plot_graph(range(len(dev_f1_scores)), dev_f1_scores, "Iteration", "F1 score on dev set", "dev_f1")
+    torch.save({
+            'p2i': len(pred2idx),
+            'a2i': len(arg2idx),
+            'r2i': len(role2idx),
+            'drop': configuration.drop_p,
+            'embed': configuration.embed_size,
+            'linearity': configuration.linearity_size,
+            'model_state_dict': best_params,
+            }, configuration.model_dump_file)
+
+    # Predicting
     loader = torch.load(configuration.model_dump_file)
     trained_model = RolePredictor(loader['p2i'], loader['a2i'], loader['r2i'],
                            loader['drop'], loader['embed'], loader['linearity'])
     trained_model.load_state_dict(loader['model_state_dict'])
-    loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(trained_model.parameters(), lr=configuration.learn_rate)
 
-    # test set evaluation
+    # Test set evaluation
     predictions = model_predict(test_set, trained_model)
-    write_predictions(TEMP_PREDICTION_FILE, zip(predictions, test_labels), idx2role)
-
-    if configuration.test_pred_file_destroy:
-        os.remove(TEMP_PREDICTION_FILE)
+    if configuration.dump_test_preds:
+        write_predictions(TEMP_PREDICTION_FILE, zip(predictions, test_labels),
+                                                                       idx2role)
 
     print("TEST SET")
     p, r, f1 = perform_benchmarking(predictions, test_labels)

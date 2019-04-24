@@ -1,5 +1,10 @@
-\documentclass{article}
-\usepackage[utf8]{inputenc}
+\documentclass[11pt]{article}
+
+\usepackage{fullpage, tabu}
+\parindent 0pt
+\parskip 1ex
+\textwidth 6.5in
+\thispagestyle{empty}
 
 \title{Independent Study Report}
 \author{Vedant Puri}
@@ -12,27 +17,146 @@
 \section{Introduction}
 The task assigned to me was to perform supervised learning on scientific procedural texts. This is also known as shallow semantic parsing and in simple terms, my task was to implement code that learnt the label between a predicate and an argument in scientific texts from the training data and ``successfully'' and competitively predicted a label for a predicate argument pair in the testing/dev set.
 
-\section{Preparation}
-Prior to this study I was just accustomed to using sklearn for Machine Learning as was taught to me in CS589. But as suggested by my advisor it would be a great learning experience to dive into PyTorch and handle this task by implementing code using PyTorch. Consequently it took me a while to understand the library and eventually get used to how it works. I went over tutorials and implemented the following before I got to the actual task at hand:
-
-\begin{enumerate}
-    \item An image classifier that was mentioned on the tutorials that used a multi-layer neural network to classify an image in one of many classes. It uses cross-entropy loss as the loss function and runs using stochastic gradient descent.
-    \item A text classifier that used a bag of words representation as its features to learn and then predict the language that the text was in. There were 3 classes for this task: English, Spanish and French. It was essentially a Logistic Regression classifier and hence used a Negative Log Likelihood loss and ran using stochastic gradient descent.
-\end{enumerate}
-
 
 \section{Data}
-Helpfully enough, my mentor during this project, Sheshera Mysore, helped with the splitting of data into train, development and testing sets. The data was in the form of annoted sentences that can also been seen in a GUI at (ADD MIT LINK HERE).
+Helpfully enough, my mentor during this project, Sheshera Mysore, helped with the splitting of data into train, development and testing sets. The data was in the form of annoted sentences that can also been seen in a GUI at (ADD MIT LINK HERE). \\
+- what data is Explain using example\\
 
-\section{Pre-Processing}
-- obtaining relevant sections from the annotated dicts
-- forming predicate, arg, role pairs and storing preds and args as separate lists and the reasoning for doing that
--
-\section{Training}
+- How big it is [sentences] \\
+\begin{tabu} to 0.8\textwidth { | X[l] | X[c] | }
+ \hline
+ \textbf{Data Split} & \textbf{\# of sentences}\\
+ \hline
+ Training  & 715\\
+\hline
+Development  & 211\\
+\hline
+Test  & 814\\
+\hline
+\end{tabu} \\
 
-\section{Evaluation}
-- sklearn metrics used
+- How many predicates present \\
+\begin{tabu} to 0.8\textwidth { | X[l] | X[c] | }
+ \hline
+ \textbf{Data Split} & \textbf{\# of predicates}\\
+ \hline
+ Training  & 235\\
+\hline
+Development  & 127\\
+\hline
+Test  & 305\\
+\hline
+\end{tabu} \\
 
-\section{Conclusion}
+- Label Distribution \\
+\begin{tabu} to 0.8\textwidth { | X[l] | X[c] | }
+ \hline
+ \textbf{Label} & \textbf{Count}\\
+ \hline
+ Recipe\_Target  & 412\\
+\hline
+Recipe\_Precursor  & 1029\\
+\hline
+Solvent\_Material  & 524\\
+\hline
+Participant\_Material  & 1955\\
+\hline
+Condition\_Of  & 2041\\
+\hline
+Apparatus\_Of  & 511\\
+\hline
+Atmospheric\_Material  & 206\\
+\hline
+\end{tabu} \\
+
+
+\section{Task Definition}
+Mathematically define the task
+
+\section{Method}
+\subsection{Model Description}
+Mathematically say model
+
+\subsection{Training}
+\subsection{Hyper parameters}
+
+\section{Experiments}
+
+\section{Results}
+
+Train Loss graph \\
+
+Dev f1 score graph \\
+
+Comparing to baselines\\
+
+\begin{tabu} to 0.8\textwidth { | X[l] | X[c] | X[c] | X[c] |}
+ \hline
+ \textbf{Model} & \textbf{Precision} & \textbf{Recall} & \textbf{F1}\\
+ \hline
+ Baseline 1  &  & &\\
+\hline
+Baseline 2  &  & &\\
+\hline
+My Method  &  & &\\
+\hline
+\end{tabu} \\
+
+Label Wise metrics\\
+
+\begin{tabu} to 0.8\textwidth { | X[l] | X[c] | X[c] | X[c] | }
+ \hline
+ \textbf{Label} & \textbf{Precision} & \textbf{Recall} & \textbf{F1}\\
+ \hline
+ Recipe\_Target  & & & \\
+\hline
+Recipe\_Precursor  & & & \\
+\hline
+Solvent\_Material  & & & \\
+\hline
+Participant\_Material  & & & \\
+\hline
+Condition\_Of  & & & \\
+\hline
+Apparatus\_Of  & & & \\
+\hline
+Atmospheric\_Material  & & & \\
+\hline
+\end{tabu} \\
+
+Other Metrics\\
+
+\begin{tabu} to 0.8\textwidth { | X[l] | X[c] | X[c] | X[c] |}
+ \hline
+ \textbf{Model} & \textbf{Train Set} & \textbf{Dev Set} & \textbf{Test Set}\\
+ \hline
+ Precision  &  & &\\
+\hline
+Recall  &  & &\\
+\hline
+F1  &  & &\\
+\hline
+\end{tabu} \\
+
+
+
+% \section{Pre-Processing}
+% - obtaining relevant sections from the annotated dicts
+% - forming predicate, arg, role pairs and storing preds and args as separate lists and the reasoning for doing that
+% -
+% \section{Training}
+
+% \section{Evaluation}
+% - sklearn metrics used
+
+% \section{Conclusion}
+
+% \section{Preparation}
+% Prior to this study I was just accustomed to using sklearn for Machine Learning as was taught to me in CS589. But as suggested by my advisor it would be a great learning experience to dive into PyTorch and handle this task by implementing code using PyTorch. Consequently it took me a while to understand the library and eventually get used to how it works. I went over tutorials and implemented the following before I got to the actual task at hand:
+
+% \begin{enumerate}
+%     \item An image classifier that was mentioned on the tutorials that used a multi-layer neural network to classify an image in one of many classes. It uses cross-entropy loss as the loss function and runs using stochastic gradient descent.
+%     \item A text classifier that used a bag of words representation as its features to learn and then predict the language that the text was in. There were 3 classes for this task: English, Spanish and French. It was essentially a Logistic Regression classifier and hence used a Negative Log Likelihood loss and ran using stochastic gradient descent.
+% \end{enumerate}
 
 \end{document}
