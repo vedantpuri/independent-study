@@ -93,7 +93,6 @@ def plot_graph(x_axis, y_axis, x_label, y_label, fig_name):
     :param y_label:     Vertical axis label
     :param fig_name:    Name of figure to save it as
     """
-    # print("Plotting CV Graph ...")
     graph_dir = '../Figures/'
     if not os.path.isdir(graph_dir):
         os.makedirs(graph_dir)
@@ -102,7 +101,6 @@ def plot_graph(x_axis, y_axis, x_label, y_label, fig_name):
     plt.plot(x_axis, y_axis)
     plt.savefig(graph_dir + fig_name)
     plt.close()
-    # print('Plot Complete. Saved as: "', graph_dir + fig_name, '"')
 
 # ---------- PRE-PROCESSING UTILS
 
@@ -392,64 +390,68 @@ if __name__ == "__main__":
     assert(len(role2idx) == len(idx2role))
 
     # Learning
-    model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx),
-                            configuration.drop_p, configuration.embed_size,
+    if configuration.train_switch:
+        model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx),
+                                configuration.drop_p, configuration.embed_size,
                                                    configuration.linearity_size)
-    loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=configuration.learn_rate)
+        loss_function = nn.CrossEntropyLoss()
+        optimizer = optim.SGD(model.parameters(), lr=configuration.learn_rate)
 
-    training_data = zip(train_set, train_labels)
-    dev_data = zip(dev_set, dev_labels)
-    results = train(configuration, training_data, model, loss_function,
+        training_data = zip(train_set, train_labels)
+        dev_data = zip(dev_set, dev_labels)
+        results = train(configuration, training_data, model, loss_function,
                                                             optimizer, dev_data)
-    best_params, losses, dev_f1_scores = results
-    # plot_graph(range(len(dev_f1_scores)), dev_f1_scores, "Iteration", "F1 score on dev set", "dev_f1")
-    torch.save({
-            'p2i': len(pred2idx),
-            'a2i': len(arg2idx),
-            'r2i': len(role2idx),
-            'drop': configuration.drop_p,
-            'embed': configuration.embed_size,
-            'linearity': configuration.linearity_size,
-            'model_state_dict': best_params,
-            }, configuration.model_dump_file)
+        best_params, losses, dev_f1_scores = results
+        # plot_graph(range(len(dev_f1_scores)), dev_f1_scores, "Iteration", "F1 score on dev set", "dev_f1")
+        torch.save({
+                'p2i': len(pred2idx),
+                'a2i': len(arg2idx),
+                'r2i': len(role2idx),
+                'drop': configuration.drop_p,
+                'embed': configuration.embed_size,
+                'linearity': configuration.linearity_size,
+                'model_state_dict': best_params,
+                }, configuration.model_file)
 
     # Predicting
-    loader = torch.load(configuration.model_dump_file)
-    trained_model = RolePredictor(loader['p2i'], loader['a2i'], loader['r2i'],
-                           loader['drop'], loader['embed'], loader['linearity'])
-    trained_model.load_state_dict(loader['model_state_dict'])
+    if configuration.predict_switch:
+        loader = torch.load(configuration.model_file)
+        trained_model = RolePredictor(loader['p2i'], loader['a2i'],
+                                      loader['r2i'], loader['drop'],
+                                      loader['embed'], loader['linearity'])
+        trained_model.load_state_dict(loader['model_state_dict'])
 
-    # Test set evaluation
-    predictions = model_predict(test_set, trained_model)
-    if configuration.dump_test_preds:
-        write_predictions(TEMP_PREDICTION_FILE, zip(predictions, test_labels),
-                                                                       idx2role)
+        # Test set evaluation
+        predictions = model_predict(test_set, trained_model)
+        if configuration.dump_test_preds:
+            write_predictions(TEMP_PREDICTION_FILE,
+                                zip(predictions,test_labels), idx2role)
 
-    print("TEST SET")
-    p, r, f1 = perform_benchmarking(predictions, test_labels)
-    print(p, r, f1)
-
-    print("TRAIN SET")
-    predictions = model_predict(train_set, trained_model)
-    p, r, f1 = perform_benchmarking(predictions, train_labels)
-    print(p, r, f1)
-
-    print("DEV SET")
-    predictions = model_predict(dev_set, trained_model)
-    p, r, f1 = perform_benchmarking(predictions, dev_labels)
-    print(p, r, f1)
-
-    if configuration.run_baselines:
-        # Random Prediction Baseline [TEST SET]
-        print("RANDOM PREDICTION BASELINE TEST SET")
-        predictions = random_predictor(test_set, len(role2idx))
+        print("TEST SET")
         p, r, f1 = perform_benchmarking(predictions, test_labels)
         print(p, r, f1)
 
-        # Majority Label Baseline [TEST SET]
-        print("MAJORITY PREDICTION BASELINE TEST SET")
-        majority_label = most_common(train_labels + dev_labels + test_labels)
-        predictions = random_predictor(test_set, majority_label)
-        p, r, f1 = perform_benchmarking(predictions, test_labels)
+        print("TRAIN SET")
+        predictions = model_predict(train_set, trained_model)
+        p, r, f1 = perform_benchmarking(predictions, train_labels)
         print(p, r, f1)
+
+        print("DEV SET")
+        predictions = model_predict(dev_set, trained_model)
+        p, r, f1 = perform_benchmarking(predictions, dev_labels)
+        print(p, r, f1)
+
+        if configuration.run_baselines:
+            # Random Prediction Baseline [TEST SET]
+            print("RANDOM PREDICTION BASELINE TEST SET")
+            predictions = random_predictor(test_set, len(role2idx))
+            p, r, f1 = perform_benchmarking(predictions, test_labels)
+            print(p, r, f1)
+
+            # Majority Label Baseline [TEST SET]
+            print("MAJORITY PREDICTION BASELINE TEST SET")
+            majority_label = most_common(train_labels + dev_labels +
+                                                                    test_labels)
+            predictions = random_predictor(test_set, majority_label)
+            p, r, f1 = perform_benchmarking(predictions, test_labels)
+            print(p, r, f1)
