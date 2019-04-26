@@ -4,14 +4,7 @@
   "TEST_FILE_PATH" : "../data/supfex-test-gold.json",
   "MODEL_FILE" : "model_file",
   "TRAIN_MODE": false,
-  "NUM_EPOCHS" : 30,
-  "DROPOUT_P" : 0.35,
-  "LEARNING_RATE" : 0.1,
-  "EMBED_SIZE" : 25,
-  "LINEARITY_SIZE" : 28,
-  "BATCH_SIZE" : 10,
-  "CHECK_EVERY" : 15,
   "TEST_MODE": true,
-  "DUMP_TEST_PREDS" : true,
+  "DUMP_TEST_PREDS" : false,
   "RUN_BASELINES" : true
 }

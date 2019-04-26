@@ -169,6 +169,18 @@ def form_reverse_mapping(pred_map, arg_map, role_map):
 
     return pred_rev_map, arg_rev_map, role_rev_map
 
+def dict_to_list(d):
+    """
+    Convert dictionary to list. Keys(Assumed integers)
+    :param d:   The dictionary to be converted
+
+    :return:    A list where the k'th index has d[k]
+    """
+    indexed_vals = []
+    for k in d:
+        indexed_vals += [d[k]]
+
+    return indexed_vals
 
 # ---------- TRAINING MECHANISM
 
@@ -219,6 +231,7 @@ def train(config, train_data, model, loss_fn, optimizer, dev_data):
     iteration = 0
     epoch_losses = []
     iter_losses = []
+    all_losses = []
 
     for epoch in range(config.epochs):
         # Shuffle training data here
@@ -253,9 +266,10 @@ def train(config, train_data, model, loss_fn, optimizer, dev_data):
 
             iteration += 1
         epoch_losses += [np.mean(iter_losses)]
+        all_losses += iter_losses
         iter_losses = []
 
-    return best_params, epoch_losses, dev_f1_scores
+    return best_params, epoch_losses, all_losses, dev_f1_scores
 
 
 # ---------- PREDICTIONS + EVAL
@@ -289,7 +303,7 @@ def demistify_predictions(probs_tensor, maximum=True):
     else:
         return torch.min(probs_tensor, 0)[1].item()
 
-def evaluate_performance(metric_fn, predictions, labels, extra_args):
+def evaluate_performance(metric_fn, predictions, labels, extra_args={}):
     """
     Provide the requested metric on the arguments given
     :param metric_fn:       The sklearn metric fucntion to be used
@@ -341,9 +355,12 @@ def perform_benchmarking(predictions, labels):
 
     :return:                A triple: precision, recall, f1 (In that order)
     """
-    p = evaluate_performance(precision_score, predictions, labels, {"average":'micro'})
-    r = evaluate_performance(recall_score, predictions, labels, {"average":'micro'})
-    f1 = evaluate_performance(f1_score, predictions, labels, {"average":'micro'})
+    p = evaluate_performance(precision_score, predictions, labels,
+                                                            {"average":'micro'})
+    r = evaluate_performance(recall_score, predictions, labels,
+                                                            {"average":'micro'})
+    f1 = evaluate_performance(f1_score, predictions, labels,
+                                                            {"average":'micro'})
 
     return p, r, f1
 
@@ -365,9 +382,12 @@ if __name__ == "__main__":
     assert(len(sys.argv) == 2)
     assert(os.path.exists(sys.argv[1]))
     configuration = ConfigManager(sys.argv[1])
+    print(CONFIG_PARSE_BEGIN)
     configuration.parse_config()
+    print(CONFIG_PARSE_SUCC)
 
-    # Form samples
+    # Reading in tools
+    print(ENCODING_BEGIN)
     samples_generator_train = read_perline_json(configuration.train_file_path)
     samples_generator_dev = read_perline_json(configuration.dev_file_path)
     samples_generator_test = read_perline_json(configuration.test_file_path)
@@ -388,21 +408,34 @@ if __name__ == "__main__":
     assert(len(pred2idx) == len(idx2pred))
     assert(len(arg2idx) == len(idx2arg))
     assert(len(role2idx) == len(idx2role))
+    print(ENCODING_SUCC)
 
     # Learning
     if configuration.train_switch:
+        print(DIVIDER)
+        print(TRAIN_INV)
         model = RolePredictor(len(pred2idx), len(arg2idx), len(role2idx),
                                 configuration.drop_p, configuration.embed_size,
                                                    configuration.linearity_size)
         loss_function = nn.CrossEntropyLoss()
         optimizer = optim.SGD(model.parameters(), lr=configuration.learn_rate)
-
         training_data = zip(train_set, train_labels)
         dev_data = zip(dev_set, dev_labels)
+        print(TRAIN_INV_SUCC)
+
+        print(TRAIN_BEGIN)
         results = train(configuration, training_data, model, loss_function,
                                                             optimizer, dev_data)
-        best_params, losses, dev_f1_scores = results
-        # plot_graph(range(len(dev_f1_scores)), dev_f1_scores, "Iteration", "F1 score on dev set", "dev_f1")
+        print(TRAIN_SUCC)
+
+        best_params, epoch_losses, all_loss, dev_f1_scores = results
+        plot_graph(range(len(dev_f1_scores)), dev_f1_scores, "Iteration",
+                                                "F1 score on dev set", "dev_f1")
+        plot_graph(range(len(epoch_losses)), epoch_losses, "Epoch",
+                                        "Training Loss", "epoch_train_loss")
+        plot_graph(range(len(all_loss)), all_loss, "Iteration",
+                                        "Training Loss", "iter_train_loss")
+        print(GRAPH_PLOT_MSG)
         torch.save({
                 'p2i': len(pred2idx),
                 'a2i': len(arg2idx),
@@ -412,46 +445,79 @@ if __name__ == "__main__":
                 'linearity': configuration.linearity_size,
                 'model_state_dict': best_params,
                 }, configuration.model_file)
+        print(MODEL_DUMP_MSG, configuration.model_file)
 
-    # Predicting
+    # Predicting + Benchmarking
     if configuration.predict_switch:
+        print(DIVIDER)
+        print(TEST_INV)
         loader = torch.load(configuration.model_file)
         trained_model = RolePredictor(loader['p2i'], loader['a2i'],
                                       loader['r2i'], loader['drop'],
                                       loader['embed'], loader['linearity'])
         trained_model.load_state_dict(loader['model_state_dict'])
 
-        # Test set evaluation
+        print(TEST_PREDS_BEGIN)
         predictions = model_predict(test_set, trained_model)
+        print(PREDS_END)
+
         if configuration.dump_test_preds:
+            print(WRITE_PREDS_BEGIN)
             write_predictions(TEMP_PREDICTION_FILE,
                                 zip(predictions,test_labels), idx2role)
+            print(WRITE_PREDS_SUCC)
 
-        print("TEST SET")
-        p, r, f1 = perform_benchmarking(predictions, test_labels)
-        print(p, r, f1)
+        index_labels = dict_to_list(idx2role)
+        print(TEST_REPORT_MSG)
+        print(evaluate_performance(classification_report, predictions,
+                                   test_labels, {"target_names": index_labels}))
 
-        print("TRAIN SET")
+        print(TRAIN_PREDS_BEGIN)
         predictions = model_predict(train_set, trained_model)
+        print(PREDS_END)
         p, r, f1 = perform_benchmarking(predictions, train_labels)
-        print(p, r, f1)
+        print(TRAIN_METRICS)
+        print(PR, p)
+        print(RE, r)
+        print(F1, f1)
+        print()
 
-        print("DEV SET")
+        print(DEV_PREDS_BEGIN)
         predictions = model_predict(dev_set, trained_model)
+        print(PREDS_END)
         p, r, f1 = perform_benchmarking(predictions, dev_labels)
-        print(p, r, f1)
+        print(DEV_METRICS)
+        print(PR, p)
+        print(RE, r)
+        print(F1, f1)
+        print()
 
         if configuration.run_baselines:
+            print(DIVIDER)
+            print(BASE_BEGIN)
             # Random Prediction Baseline [TEST SET]
-            print("RANDOM PREDICTION BASELINE TEST SET")
+            print(RAND_PRED)
             predictions = random_predictor(test_set, len(role2idx))
+            print(PREDS_END)
             p, r, f1 = perform_benchmarking(predictions, test_labels)
-            print(p, r, f1)
+            print(RAND_METRIC_MSG)
+            print(PR, p)
+            print(RE, r)
+            print(F1, f1)
+            print()
 
             # Majority Label Baseline [TEST SET]
-            print("MAJORITY PREDICTION BASELINE TEST SET")
             majority_label = most_common(train_labels + dev_labels +
                                                                     test_labels)
+            print(MAJ_PRED)
             predictions = random_predictor(test_set, majority_label)
+            print(PREDS_END)
             p, r, f1 = perform_benchmarking(predictions, test_labels)
-            print(p, r, f1)
+            print(MAJ_METRIC_MSG)
+            print(PR, p)
+            print(RE, r)
+            print(F1, f1)
+            print()
+
+            print(BASE_END)
+    print(TERMINATED)

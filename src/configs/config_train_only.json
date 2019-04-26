@@ -1,0 +1,15 @@
+{
+  "TRAINING_FILE_PATH" : "../data/supfex-train-gold.json",
+  "DEV_FILE_PATH" : "../data/supfex-dev-gold.json",
+  "TEST_FILE_PATH" : "../data/supfex-test-gold.json",
+  "MODEL_FILE" : "model_file",
+  "TRAIN_MODE": true,
+  "NUM_EPOCHS" : 30,
+  "DROPOUT_P" : 0.35,
+  "LEARNING_RATE" : 0.1,
+  "EMBED_SIZE" : 25,
+  "LINEARITY_SIZE" : 28,
+  "BATCH_SIZE" : 10,
+  "CHECK_EVERY" : 15,
+  "TEST_MODE": false
+}
